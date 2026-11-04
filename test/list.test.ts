@@ -42,6 +42,13 @@ describe('fetchList', () => {
     expect(r.next).toBeUndefined();
   });
 
+  it('caps an explicit page even if AroFlo ignores limit', async () => {
+    const { http } = setup(() => ({ body: { items: Array.from({ length: 600 }, (_, i) => ({ id: `X${i}` })) } }));
+    const r = await fetchList(http, tasks, '/tasks', {}, 5, 1);
+    expect(r.items).toHaveLength(5);
+    expect(r.next).toEqual({ page: 2, limit: 5 });
+  });
+
   it('fetches one explicit page', async () => {
     const { f, http } = setup();
     const r = await fetchList(http, tasks, '/tasks', {}, 100, 3);

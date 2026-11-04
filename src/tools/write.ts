@@ -103,14 +103,24 @@ async function send(p: Prepared, d: Deps): Promise<string> {
     if (d.signal?.aborted) return 'Cancelled: nothing was sent.';
     const res = await d.http.request(p.method, p.path, { query: p.query, body: p.body, confirmedWrite: true, template: p.op.k, signal: d.signal });
     const warn = audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: p.op.k, path: p.path, status: res.status, outcome: 'ok', bodySha256, ids: idsIn(res.data) });
+    const tail = warn ? `\n(${warn})` : '';
+    if (res.status === 207) return `sent: ${p.op.k} -> 207\n${multiStatus(res.data)}${tail}`;
     const detail = res.data === undefined ? '' : `\n${render(res.data, { maxText: 300, maxCell: 50 })}`;
-    const partial = res.status === 207 ? '\n207: some items failed; the rows above say which. Do not resend the ones that succeeded.' : '';
-    return `sent: ${p.op.k} -> ${res.status}${detail}${partial}${warn ? `\n(${warn})` : ''}`;
+    return `sent: ${p.op.k} -> ${res.status}${detail}${tail}`;
   } catch (err) {
     const outcome = err instanceof ApiError && err.outcome === 'unknown' ? 'unknown' : 'failed';
     audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: p.op.k, path: p.path, status: err instanceof ApiError ? err.status : 0, outcome, bodySha256 });
     throw err;
   }
+}
+
+/** A 207 names every failed item (never cut) and counts the rest, so nothing is resent or lost. */
+export function multiStatus(data: unknown): string {
+  const rows = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.items) ? data.items : [];
+  const failed = rows.filter((r) => isObj(r) && ((typeof r.status === 'number' && r.status >= 400) || r.error !== undefined || r.success === false));
+  if (!rows.length) return `207: partial success; AroFlo returned no item list.\n${render(data, { maxText: 300, maxCell: 80, maxRows: 1000 })}`;
+  const head = `207: ${failed.length} of ${rows.length} items failed; the other ${rows.length - failed.length} succeeded. Do not resend the ones that succeeded.`;
+  return failed.length ? `${head}\nfailed:\n${render(failed, { maxText: 300, maxCell: 120, maxRows: 1000 })}` : head;
 }
 
 const baseSchema = {

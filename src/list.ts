@@ -49,8 +49,8 @@ export async function fetchList(http: AroFloHttp, op: Op, path: string, query: R
   if (startPage !== undefined) {
     const limit = Math.min(Math.max(1, want), PAGE_MAX);
     const page = readPage((await request({ ...query, page: String(startPage), limit: String(limit) })).data);
-    const more = page.pages !== undefined ? startPage < page.pages : page.items.length === limit;
-    return { items: page.items, total: page.total, next: more ? { page: startPage + 1, limit } : undefined };
+    const more = page.pages !== undefined ? startPage < page.pages : page.items.length >= limit;
+    return { items: page.items.slice(0, limit), total: page.total, next: more ? { page: startPage + 1, limit } : undefined };
   }
 
   const target = Math.min(Math.max(1, want), MAX_ROWS);

@@ -56,7 +56,9 @@ const routes: Record<string, (call: Call) => Reply> = {
   'GET /quotes/Q10/takeoffs': () => ({ body: { count: 1, page: { number: 1, size: 100, count: 1 }, items: [{ id: 'K1', name: 'HARDSCAPES', breakdown: { totalInc: 9900, totalLabourHours: 30 }, _links: {} }] } }),
   'GET /quotes/Q10/lineitems': (call) => pagedList(call.query.takeoffId === 'K1' || !call.query.takeoffId ? lines : [])(call),
   'PATCH /clients/C1': (call) => ({ body: { id: 'C1', name: 'Smith, Jo', individual: (call.body as { individual?: boolean }).individual } }),
-  'POST /tasks/T50/notes/bulk': () => ({ status: 207, body: { items: [{ index: 0, status: 201, id: 'N1' }, { index: 1, status: 400, error: 'content required' }] } })
+  'POST /tasks/T50/notes/bulk': () => ({ status: 207, body: { items: [{ index: 0, status: 201, id: 'N1' }, { index: 1, status: 400, error: 'content required' }] } }),
+  'POST /tasks/T51/notes/bulk': () => ({ status: 207, body: { items: [...Array.from({ length: 30 }, (_, i) => ({ index: i, status: 201, id: `N${i}` })), { index: 30, status: 400, error: 'too long' }] } }),
+  'GET /tasks/T70': () => ({ body: { id: 'T70', big: { nested: { blob: 'x'.repeat(200_000) } } } })
 };
 
 function setup(cfg: Partial<Config> = {}) {
@@ -120,6 +122,13 @@ describe('aroflo_get', () => {
     const r = await call('aroflo_get', { path: '/tasks/T61/notes?limit=2' });
     expect(r.text.split('\n')[0]).toBe('2 of 600 rows (limit=N for more)');
     expect(r.text.split('\n')).toHaveLength(4);
+  });
+
+  it('cuts any result at the hard ceiling, full=true included', async () => {
+    const { call } = setup();
+    const r = await call('aroflo_get', { path: '/tasks/T70', full: true });
+    expect(r.text.length).toBeLessThan(61_000);
+    expect(r.text).toMatch(/\[output cut at 60000 chars of \d+; narrow it/);
   });
 
   it('full=true drops the default columns', async () => {
@@ -287,7 +296,15 @@ describe('aroflo_write (code mode: client without confirm dialogs)', () => {
     const args = { method: 'POST', path: '/tasks/T50/notes/bulk', body: { taskNotes: [{ content: 'a', filter: 'INTERNAL_ONLY' }, { content: 'b', filter: 'INTERNAL_ONLY' }] } };
     const r = await call('aroflo_write', { ...args, confirm: codeIn((await call('aroflo_write', args)).text) });
     expect(r.text).toMatch(/-> 207/);
-    expect(r.text).toMatch(/some items failed/);
+    expect(r.text).toContain('207: 1 of 2 items failed; the other 1 succeeded.');
+  });
+
+  it('names a 207 failure even when it comes after many successes', async () => {
+    const { call } = writable();
+    const args = { method: 'POST', path: '/tasks/T51/notes/bulk', body: { taskNotes: [{ content: 'a', filter: 'INTERNAL_ONLY' }] } };
+    const r = await call('aroflo_write', { ...args, confirm: codeIn((await call('aroflo_write', args)).text) });
+    expect(r.text).toContain('207: 1 of 31 items failed');
+    expect(r.text).toContain('too long');
   });
 });
 
