@@ -37,7 +37,17 @@ const routes: Record<string, (call: Call) => Reply> = {
     { date: '2026-10-03T00:00:00Z', hours: 1.5, user: { id: 'U1', givenName: 'Tom', familyName: 'B' }, workType: { id: 'W2', name: 'Travel' } }
   ]),
   'GET /tasks/T50/materials': () => ({ status: 403, body: { error: 'Forbidden' } }),
-  'GET /tasks/T50/notes': () => ({ body: [{ note: 'Older note', timestampCreated: '2026-10-01T08:00:00Z' }, { note: '<p>Gate code&nbsp;1234</p>', timestampCreated: '2026-10-02T09:00:00Z' }] }),
+  // Documented shape: {count, items: [{note: {content, postedBy}, timestampCreated}]}
+  'GET /tasks/T50/notes': () => ({
+    body: {
+      count: 2,
+      items: [
+        { id: 'N1', note: { id: 'N1', content: 'Older note', postedBy: { id: 'U1', givenName: 'Tom', familyName: 'B' } }, timestampCreated: '2026-10-01T08:00:00Z' },
+        { id: 'N2', note: { id: 'N2', content: '<p>Gate code&nbsp;1234</p>', postedBy: { id: 'U2', givenName: 'Ann', familyName: 'K' } }, timestampCreated: '2026-10-02T09:00:00Z' }
+      ]
+    }
+  }),
+  'GET /tasks/T60/notes': () => ({ body: Array.from({ length: 600 }, (_, i) => ({ id: `N${i}`, note: `n${i}` })) }),
   'GET /quotes/Q10': () => ({
     body: { id: 'Q10', jobNumber: 3030, name: 'Back yard', status: 'In Progress', acceptanceStatus: { id: 2, name: 'Awaiting Decision' }, client: { id: 'C1', name: 'Smith, Jo' }, counts: { total: 9900, tax: 900, taxInclusive: true, forms: 3, documents: 2 } }
   }),
@@ -85,6 +95,15 @@ describe('aroflo_get', () => {
     const { call } = setup();
     expect((await call('aroflo_get', { path: '/tasks?requiredByFrom=2026-11-05&requiredByTo=2026-11-05&limit=2' })).text).toMatch(/\nhint: requiredByTo=D stops at D 00:00/);
     expect((await call('aroflo_get', { path: '/tasks?limit=2' })).text).not.toContain('hint:');
+  });
+
+  it('takes limit on lists AroFlo does not page, and bounds raw array responses', async () => {
+    const { call } = setup();
+    const m = await call('aroflo_get', { path: '/tasks/T50/labours?limit=2' });
+    expect(m.text.split('\n')[0]).toBe('2 of 3 rows; next: page=2&limit=2');
+    const n = await call('aroflo_get', { path: '/tasks/T60/notes' });
+    expect(n.text.split('\n')[0]).toBe('25 of 600 rows (limit=N for more)');
+    expect(n.text.split('\n')).toHaveLength(27);
   });
 
   it('full=true drops the default columns', async () => {
@@ -145,7 +164,7 @@ describe('aroflo_job', () => {
     expect(r.text).toContain('by person: Tom B 9.5, Ann K 6.5');
     expect(r.text).toContain('by work type: Labour 14.5, Travel 1.5');
     expect(r.text).toMatch(/materials: unavailable \(403: Forbidden/);
-    expect(r.text).toContain('notes (latest 2 of 2):\n2026-10-02 09:00Z: Gate code 1234');
+    expect(r.text).toContain('notes (latest 2 of 2):\n2026-10-02 09:00Z Ann K: Gate code 1234\n2026-10-01 08:00Z Tom B: Older note');
     const lookups = f.calls.filter((c) => c.path === '/tasks');
     expect(lookups.length).toBeLessThanOrEqual(4);
   });
@@ -279,6 +298,18 @@ describe('aroflo_write (dialog mode: client with MCP elicitation, e.g. Codex)', 
     const no = dialogSetup(false);
     expect((await no.call({ method: 'PATCH', path: '/clients/C1', body: { individual: true } })).text).toBe('Not sent: the user declined.');
     expect(no.f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
+  });
+});
+
+describe('cancellation', () => {
+  it('sends nothing when the client cancels the call before the write goes out', async () => {
+    const f = fakeFetch(routes);
+    const cfg = testConfig({ writeOps: ['Clients'] });
+    const ac = new AbortController();
+    const deps = { ...makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)), askUser: async () => (ac.abort(), true), signal: ac.signal };
+    const r = await callTool(toolsFor(cfg, 'dialog'), 'aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: true } }, deps);
+    expect(r.text).toBe('Cancelled: nothing was sent.');
+    expect(f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
   });
 });
 

@@ -13,6 +13,8 @@ export interface Deps {
   jobs: JobIndex;
   /** Ask the user to approve, outside the model (MCP elicitation). Present only when the client supports it. */
   askUser?: (message: string) => Promise<boolean>;
+  /** Cancellation of the current tool call, from the MCP client. */
+  signal?: AbortSignal;
 }
 
 /** What tools/list sends. Keep descriptions and schemas short: every client pays for them on every turn. */

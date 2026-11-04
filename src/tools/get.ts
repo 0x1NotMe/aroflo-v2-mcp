@@ -40,16 +40,15 @@ export const getTool: Tool = {
     const { op, search } = target;
     const pageable = op.q.some((p) => p.n === 'page') && op.q.some((p) => p.n === 'limit');
 
+    // limit is always ours (rows to show). page goes to AroFlo only where the endpoint pages.
     let want = d.cfg.defaultLimit;
     let startPage: number | undefined;
-    if (op.list && pageable) {
-      const limit = search.get('limit');
-      const page = search.get('page');
-      if (limit !== null) want = count(limit, 'limit', page !== null ? 100 : MAX_ROWS);
-      if (page !== null) startPage = count(page, 'page', 1_000_000);
-      search.delete('limit');
-      search.delete('page');
-    }
+    const limit = search.get('limit');
+    const page = pageable ? search.get('page') : null;
+    if (limit !== null) want = count(limit, 'limit', page !== null ? 100 : MAX_ROWS);
+    if (page !== null) startPage = count(page, 'page', 1_000_000);
+    search.delete('limit');
+    if (pageable) search.delete('page');
     // Default columns: sent as _fields where AroFlo supports it, otherwise applied to the rows here.
     // Either way the model only reads the columns that matter.
     const defaults = !full && !search.has('_fields') ? DEFAULT_FIELDS[op.k] : undefined;
@@ -66,7 +65,15 @@ export const getTool: Tool = {
       const hints = (HINTS[op.k] ?? []).filter((h) => h.param && h.param in query).map((h) => `hint: ${h.text}`);
       return [listHeader(r), body, ...hints].filter(Boolean).join('\n');
     }
-    const res = await d.http.request('GET', target.path, { query, collection: op.pp.length === 0, template: op.k });
+    const res = await d.http.request('GET', target.path, { query, collection: op.pp.length === 0, template: op.k, signal: d.signal });
+    // Some endpoints the spec calls single records answer with a list: bound those like any list.
+    const rows = Array.isArray(res.data) ? res.data : isObj(res.data) && Array.isArray(res.data.items) && Object.keys(res.data).every((k) => ['items', 'count', 'page'].includes(k)) ? res.data.items : undefined;
+    if (rows) {
+      const shown = rows.slice(0, want);
+      const head = shown.length < rows.length ? `${shown.length} of ${rows.length} rows (limit=N for more)` : `${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`;
+      const body = table(shown, { maxCell });
+      return body ? `${head}\n${body}` : head;
+    }
     return render(res.data, { maxText: full ? 100_000 : 600, maxCell, full }) || '(empty response)';
   }
 };

@@ -49,20 +49,23 @@ export function createServer(deps: Deps): Server {
   const debugFile = process.env.AROFLO_V2_DEBUG_FILE;
   if (debugFile) server.oninitialized = () => writeFileSync(debugFile, `${JSON.stringify({ client: server.getClientVersion(), capabilities: server.getClientCapabilities() })}\n`);
   const canAsk = () => server.getClientCapabilities()?.elicitation !== undefined;
-  const askUser = async (message: string) => {
-    const r = await server.elicitInput({
-      mode: 'form',
-      message,
-      requestedSchema: { type: 'object', properties: { send: { type: 'boolean', title: 'Send to AroFlo', default: false } }, required: ['send'] }
-    });
+  const askUser = (signal?: AbortSignal) => async (message: string) => {
+    const r = await server.elicitInput(
+      {
+        mode: 'form',
+        message,
+        requestedSchema: { type: 'object', properties: { send: { type: 'boolean', title: 'Send to AroFlo', default: false } }, required: ['send'] }
+      },
+      { signal }
+    );
     return r.action === 'accept' && r.content?.send === true;
   };
   const current = () => toolsFor(deps.cfg, canAsk() ? 'dialog' : 'code');
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: current().map((t) => t.def) }));
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const tools = current();
     if (!tools.some((t) => t.def.name === req.params.name)) throw new McpError(ErrorCode.InvalidParams, `Unknown tool ${req.params.name}. Tools: ${tools.map((t) => t.def.name).join(', ')}.`);
-    const callDeps = canAsk() ? { ...deps, askUser } : deps;
+    const callDeps: Deps = { ...deps, signal: extra.signal, ...(canAsk() ? { askUser: askUser(extra.signal) } : {}) };
     const { text, isError } = await callTool(tools, req.params.name, (req.params.arguments ?? {}) as Record<string, unknown>, callDeps);
     return { content: [{ type: 'text' as const, text }], ...(isError ? { isError: true } : {}) };
   });

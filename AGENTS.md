@@ -29,7 +29,7 @@ Debugging: `AROFLO_V2_DEBUG=1` logs one line per request (operation template, st
 
 ## Safety
 
-- The server is read-only unless `AROFLO_V2_WRITE_OPS` names operations. Every write is a preview first, then a confirm with the code from the preview.
+- The server is read-only unless `AROFLO_V2_WRITE_OPS` names operations. Clients with MCP elicitation (Codex) confirm each write in a dialog the model can't answer. Other clients get a preview and a single-use code, and their own approval prompt must stay on for `aroflo_write`.
 - AroFlo has no API delete except for schedules. A test record has to be removed by hand in the AroFlo UI, so live writes happen only when Gerd asks, on records named `ZZ ... (delete me)`.
 - Never print, log or commit a token. Tests and fixtures use synthetic data only, with no real AroFlo records, ids, names or counts.
 - A 401, or a 404 on a collection path that worked before, usually means the token was revoked or rotated. Report it and stop calling. Don't retry in a loop.

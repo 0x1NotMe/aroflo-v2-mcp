@@ -77,13 +77,21 @@ export const jobTool: Tool = {
     } else out.push(failure('materials', materials)!);
 
     if (notes.status === 'fulfilled') {
-      const rows = itemsOf(notes.value.data).filter((n) => typeof n.note === 'string' && n.note.trim());
-      rows.sort((a, b) => String(b.timestampCreated ?? '').localeCompare(String(a.timestampCreated ?? '')));
+      // Documented shape: items[].note = {content, postedBy, ...}; older or simpler shapes put text in note.
+      const rows = itemsOf(notes.value.data)
+        .map((n) => {
+          const note = isObj(n.note) ? n.note : undefined;
+          const text = typeof n.note === 'string' ? n.note : typeof note?.content === 'string' ? note.content : '';
+          const by = note && isObj(note.postedBy) ? label(note.postedBy) : undefined;
+          return { text: plainText(text), by, at: typeof n.timestampCreated === 'string' ? n.timestampCreated : '' };
+        })
+        .filter((n) => n.text);
+      rows.sort((a, b) => b.at.localeCompare(a.at));
       if (rows.length) {
         out.push(`notes (latest ${Math.min(MAX_NOTES, rows.length)} of ${rows.length}):`);
         for (const n of rows.slice(0, MAX_NOTES)) {
-          const when = typeof n.timestampCreated === 'string' ? `${shortDate(n.timestampCreated)}: ` : '';
-          out.push(`${when}${cut(plainText(String(n.note)), 240)}`);
+          const head = [n.at ? shortDate(n.at) : '', n.by ?? ''].filter(Boolean).join(' ');
+          out.push(`${head ? `${head}: ` : ''}${cut(n.text, 240)}`);
         }
       } else out.push('notes: none');
     } else out.push(failure('notes', notes)!);

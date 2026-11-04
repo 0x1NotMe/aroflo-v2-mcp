@@ -27,13 +27,13 @@ You need Node 22 or later and an AroFlo API token.
 
 2. Create a token in AroFlo under Site Admin, AroFlo API. The token can do whatever its AroFlo user can do, including seeing every cost and sell price, so create it from a user that has only the access you need. AroFlo shows the token once, and the expiry you pick then can't be changed.
 
-3. Put the token in a file only you can read. Don't paste it into a config file.
+3. Put the token in a file only you can read. Don't paste it into a config file. With the token on the clipboard:
 
    ```bash
-   mkdir -p ~/.config/aroflo
-   pbpaste > ~/.config/aroflo/token   # with the token on the clipboard
-   chmod 600 ~/.config/aroflo/token
+   (umask 077; mkdir -p ~/.config/aroflo && pbpaste > ~/.config/aroflo/token)
    ```
+
+   `umask 077` makes the folder and file private from the moment they exist.
 
 4. Check the token works:
 
@@ -99,4 +99,4 @@ A `401`, or a `404` on a list that worked before, usually means the token was re
 
 ## Development
 
-`AGENTS.md` has the commands, the layout and the rules for working on this repo. AroFlo publishes no OpenAPI file, so `npm run spec:update` rebuilds the spec from the documentation site. A weekly GitHub Action does the same and opens a pull request when AroFlo changes the API.
+`AGENTS.md` has the commands, the layout and the rules for working on this repo. AroFlo publishes no OpenAPI file, so `npm run spec:update` rebuilds the spec from the documentation site. A weekly GitHub Action does the same and opens a pull request when AroFlo changes the API. It needs the repository setting Settings, Actions, General, "Allow GitHub Actions to create and approve pull requests", and it reports its test result as a status on that pull request.

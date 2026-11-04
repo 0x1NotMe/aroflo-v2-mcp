@@ -100,7 +100,8 @@ function describeRequest(p: Prepared, pretty: boolean): string {
 async function send(p: Prepared, d: Deps): Promise<string> {
   const bodySha256 = p.body === undefined ? undefined : createHash('sha256').update(canonical(p.body)).digest('hex');
   try {
-    const res = await d.http.request(p.method, p.path, { query: p.query, body: p.body, confirmedWrite: true, template: p.op.k });
+    if (d.signal?.aborted) return 'Cancelled: nothing was sent.';
+    const res = await d.http.request(p.method, p.path, { query: p.query, body: p.body, confirmedWrite: true, template: p.op.k, signal: d.signal });
     const warn = audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: p.op.k, path: p.path, status: res.status, outcome: 'ok', bodySha256, ids: idsIn(res.data) });
     const detail = res.data === undefined ? '' : `\n${render(res.data, { maxText: 300, maxCell: 50 })}`;
     const partial = res.status === 207 ? '\n207: some items failed; the rows above say which. Do not resend the ones that succeeded.' : '';
