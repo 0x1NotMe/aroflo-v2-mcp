@@ -113,6 +113,14 @@ export async function buildQuery(op: Op, search: URLSearchParams, bu: BusinessUn
       const valid = op.q.map((x) => x.n).filter((n) => n !== '_fields');
       throw new UsageError(valid.length ? `${op.k} has no filter "${k}". Valid: ${valid.join(', ')}.` : `${op.k} takes no query parameters.`);
     }
+    if (BU_NAMES.has(p.n) && (v.trim() === '' || PLACEHOLDER.test(v.trim()))) {
+      query[p.n] = await bu.businessUnitId();
+      continue;
+    }
+    if (v.trim() === '') {
+      if (p.r) throw new UsageError(`${p.n} needs a value.`);
+      continue;
+    }
     if (p.n === '_fields') {
       const unknown = op.f ? fieldNames(v).filter((f) => !op.f!.includes(f)) : [];
       if (unknown.length) throw new UsageError(`${op.k} has no field ${unknown.join(', ')}. Fields: ${op.f!.filter((f) => f !== '_links').join(', ')}.`);

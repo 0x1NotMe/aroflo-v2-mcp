@@ -60,6 +60,12 @@ describe('buildQuery', () => {
   it('accepts true/false for 0/1 integer flags', async () => {
     expect((await buildQuery(op('GET /invoices'), new URLSearchParams('allStatus=true'), bu)).allStatus).toBe('1');
   });
+  it('treats empty or placeholder business-unit values as the default unit, and drops empty optional filters', async () => {
+    expect(await buildQuery(op('GET /users'), new URLSearchParams('orgId='), bu)).toEqual({ orgId: 'BU1' });
+    expect(await buildQuery(op('GET /users'), new URLSearchParams('orgId=default'), bu)).toEqual({ orgId: 'BU1' });
+    expect(await buildQuery(op('GET /clients'), new URLSearchParams('name.like=&archived=false'), bu)).toEqual({ archived: 'false' });
+    await expect(buildQuery(op('GET /schedules'), new URLSearchParams('scheduleZone='), bu)).rejects.toThrow('scheduleZone needs a value.');
+  });
   it('names a missing required parameter with its options', async () => {
     await expect(buildQuery(op('GET /schedules'), new URLSearchParams(), bu)).rejects.toThrow(/needs scheduleZone \(one of TASK, USER\)/);
   });

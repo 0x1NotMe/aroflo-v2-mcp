@@ -18,9 +18,10 @@ export class ApiError extends Error {
 
 export interface RateState {
   minuteRemaining?: number;
-  minuteReset?: number;
   dailyRemaining?: number;
-  dailyReset?: number;
+  /** Epoch ms when each window resets, from the X-RateLimit-*-Reset headers. */
+  minuteResetAt?: number;
+  dailyResetAt?: number;
 }
 
 export interface RequestOptions {
@@ -30,6 +31,8 @@ export interface RequestOptions {
   collection?: boolean;
   /** Template used in debug logs instead of the concrete path. */
   template?: string;
+  /** Set only by the write tool, after the allowlist check and the user's confirm. */
+  confirmedWrite?: boolean;
 }
 
 export interface ApiResponse {
@@ -41,6 +44,9 @@ type Fetch = (input: URL, init: RequestInit) => Promise<Response>;
 type Sleep = (ms: number) => Promise<void>;
 
 const BURST = 10;
+const MAX_WAIT_S = 30;
+/** POSTs that change nothing (format conversion), allowed on a read-only server. */
+const READ_ONLY_POSTS = new Set(['/idconversions']);
 const UNKNOWN_HINT = 'The write may or may not have been applied: check with aroflo_get before retrying.';
 
 const realSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -48,7 +54,8 @@ const realSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export class AroFloHttp {
   readonly rate: RateState = {};
   private tokens = BURST;
-  private refilledAt = Date.now();
+  private refilledAt: number;
+  private gate: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly cfg: Config,
@@ -62,15 +69,18 @@ export class AroFloHttp {
   async request(method: Method, path: string, opts: RequestOptions = {}): Promise<ApiResponse> {
     const token = this.cfg.token;
     if (!token) throw new ApiError(this.cfg.tokenError ?? 'no AroFlo token configured', 0);
+    const write = method !== 'GET' && !(method === 'POST' && READ_ONLY_POSTS.has(path));
+    if (write && (!this.cfg.writeOps.length || opts.confirmedWrite !== true)) {
+      throw new ApiError(this.cfg.writeOps.length ? 'Refusing an unconfirmed write.' : 'Writes are disabled on this server (AROFLO_V2_WRITE_OPS is empty).', 0);
+    }
     const base = new URL(this.cfg.baseUrl);
     const url = new URL(this.cfg.baseUrl + path);
     // Refuse anything URL parsing rewrote ("..", "%2e%2e", backslashes): the request must go exactly
     // where it was validated, on the configured host.
-    if (url.origin !== base.origin || url.pathname !== `${base.pathname.replace(/\/$/, '')}${path}` || !path.startsWith('/')) {
+    if (!path.startsWith('/') || url.origin !== base.origin || url.pathname !== `${base.pathname.replace(/\/$/, '')}${path}`) {
       throw new ApiError(`Refusing path ${JSON.stringify(path)}: it does not resolve to itself.`, 0);
     }
     for (const [k, v] of Object.entries(opts.query ?? {})) url.searchParams.set(k, v);
-    const write = method !== 'GET';
     const headers: Record<string, string> = {
       authorization: `Bearer ${token}`,
       accept: 'application/json',
@@ -82,6 +92,7 @@ export class AroFloHttp {
       await this.pace();
       const started = this.now();
       let res: Response;
+      let text: string;
       try {
         res = await this.fetchImpl(url, {
           method,
@@ -89,73 +100,83 @@ export class AroFloHttp {
           body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
           signal: AbortSignal.timeout(this.cfg.timeoutMs)
         });
+        this.readRate(res.headers);
+        text = await res.text();
       } catch (err) {
+        // No complete response: retry reads; for writes the outcome is unknown and we never resend.
         const reason = this.scrub(err instanceof Error ? (err.name === 'TimeoutError' ? `timed out after ${this.cfg.timeoutMs} ms` : err.message) : String(err));
         if (!write && attempt <= 2) {
           await this.sleep(400 * 2 ** attempt);
           continue;
         }
-        throw write
-          ? new ApiError(`No response from AroFlo (${reason}). ${UNKNOWN_HINT}`, 0, 'unknown')
-          : new ApiError(`AroFlo request failed: ${reason}`, 0);
+        throw write ? new ApiError(`No complete response from AroFlo (${reason}). ${UNKNOWN_HINT}`, 0, 'unknown') : new ApiError(`AroFlo request failed: ${reason}`, 0);
       }
-      this.readRate(res.headers);
-      const text = await res.text();
       const data = parseJson(text);
       this.log(`${method} ${opts.template ?? path} ${res.status} ${this.now() - started}ms`);
 
-      // A 429 is rejected before processing, so even a write is safe to send again.
-      if (res.status === 429 && attempt <= 2) {
-        await this.sleep(Math.min(30, retryAfter(res.headers, data) ?? 5) * 1000);
-        continue;
+      if (res.status === 429) {
+        // Rejected before processing, so resending is safe even for a write. Long waits go back to the caller.
+        const wait = retryAfter(res.headers, data, this.now()) ?? 5;
+        if (wait <= MAX_WAIT_S && attempt <= 2) {
+          await this.sleep(wait * 1000);
+          continue;
+        }
+        throw new ApiError(`429: AroFlo rate limit hit. Retry in ${wait} s.`, 429);
       }
       if (!write && res.status >= 500 && res.status !== 501 && attempt <= 2) {
         await this.sleep(400 * 2 ** attempt);
         continue;
       }
       if (res.ok) return { status: res.status, data };
-      throw this.toError(res.status, data, text, write, opts.collection === true, res.headers);
+      throw this.toError(res.status, data, text, write, opts.collection === true);
     }
   }
 
-  private toError(status: number, data: unknown, text: string, write: boolean, collection: boolean, headers: Headers): ApiError {
+  private toError(status: number, data: unknown, text: string, write: boolean, collection: boolean): ApiError {
     const raw = isObj(data) ? (data.error ?? data.message ?? data.detail) : undefined;
-    const msg = this.scrub(typeof raw === 'string' ? raw : isObj(raw) || Array.isArray(raw) ? JSON.stringify(raw) : text).replace(/\s+/g, ' ').trim().slice(0, 400);
+    const msg = this.scrub(typeof raw === 'string' ? raw : isObj(raw) || Array.isArray(raw) ? JSON.stringify(raw) : text)
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 400);
     switch (status) {
       case 401:
         return new ApiError(`401: AroFlo rejected the token${msg ? ` (${msg})` : ''}. It may have been revoked or rotated: get a new token and update the MCP config.`, status);
       case 403:
         return new ApiError(`403: ${msg || 'forbidden'}. The token's AroFlo user lacks permission or business-unit access for this.`, status);
       case 404:
-        return new ApiError(
-          `404: ${msg || 'not found'}.${collection ? ' A 404 on a list endpoint usually means the token was revoked or rotated.' : ''}`,
-          status
-        );
-      case 429:
-        return new ApiError(`429: AroFlo rate limit hit. Retry in ${retryAfter(headers, data) ?? 60} s.`, status);
+        return new ApiError(`404: ${msg || 'not found'}.${collection ? ' A 404 on a list endpoint usually means the token was revoked or rotated.' : ''}`, status);
       default:
         if (write && status >= 500) return new ApiError(`${status}: ${msg || 'server error'}. ${UNKNOWN_HINT}`, status, 'unknown');
         return new ApiError(`${status}: ${msg || 'request failed'}`, status);
     }
   }
 
-  /** Token bucket (burst 10, refill maxRpm per minute) plus a stop when AroFlo says the window is spent. */
-  private async pace(): Promise<void> {
+  /** Serialised so concurrent callers queue for tokens instead of all waking at once. */
+  private pace(): Promise<void> {
+    const turn = this.gate.then(() => this.acquire());
+    this.gate = turn.catch(() => undefined);
+    return turn;
+  }
+
+  /** Token bucket (burst 10, refill maxRpm per minute), plus AroFlo's own window counters. */
+  private async acquire(): Promise<void> {
+    let now = this.now();
     if (this.rate.dailyRemaining !== undefined && this.rate.dailyRemaining <= 0) {
-      const hours = this.rate.dailyReset ? Math.ceil(this.rate.dailyReset / 3600) : 24;
-      throw new ApiError(`AroFlo daily limit reached; it resets in about ${hours} h.`, 429);
+      if (this.rate.dailyResetAt !== undefined && now < this.rate.dailyResetAt) {
+        throw new ApiError(`AroFlo daily limit reached; it resets in about ${Math.ceil((this.rate.dailyResetAt - now) / 3_600_000)} h.`, 429);
+      }
+      this.rate.dailyRemaining = undefined;
     }
-    if (this.rate.minuteRemaining !== undefined && this.rate.minuteRemaining <= 1 && this.rate.minuteReset) {
-      await this.sleep(Math.min(60, this.rate.minuteReset) * 1000);
+    if (this.rate.minuteRemaining !== undefined && this.rate.minuteRemaining <= 1 && this.rate.minuteResetAt !== undefined && now < this.rate.minuteResetAt) {
+      await this.sleep(Math.min(60_000, this.rate.minuteResetAt - now));
       this.rate.minuteRemaining = undefined;
+      now = this.now();
     }
     const perMs = this.cfg.maxRpm / 60_000;
-    const now = this.now();
     this.tokens = Math.min(BURST, this.tokens + (now - this.refilledAt) * perMs);
     this.refilledAt = now;
     if (this.tokens < 1) {
-      const wait = Math.ceil((1 - this.tokens) / perMs);
-      await this.sleep(wait);
+      await this.sleep(Math.ceil((1 - this.tokens) / perMs));
       this.tokens = 1;
       this.refilledAt = this.now();
     }
@@ -168,10 +189,13 @@ export class AroFloHttp {
       const n = v === null ? NaN : Number(v);
       return Number.isFinite(n) ? n : undefined;
     };
+    const now = this.now();
+    const minuteReset = num('x-ratelimit-minutelimit-reset');
+    const dailyReset = num('x-ratelimit-dailylimit-reset');
     this.rate.minuteRemaining = num('x-ratelimit-minutelimit-remaining') ?? this.rate.minuteRemaining;
-    this.rate.minuteReset = num('x-ratelimit-minutelimit-reset') ?? this.rate.minuteReset;
     this.rate.dailyRemaining = num('x-ratelimit-dailylimit-remaining') ?? this.rate.dailyRemaining;
-    this.rate.dailyReset = num('x-ratelimit-dailylimit-reset') ?? this.rate.dailyReset;
+    if (minuteReset !== undefined) this.rate.minuteResetAt = now + minuteReset * 1000;
+    if (dailyReset !== undefined) this.rate.dailyResetAt = now + dailyReset * 1000;
   }
 
   private scrub(s: string): string {
@@ -193,11 +217,17 @@ function parseJson(text: string): unknown {
   }
 }
 
-function retryAfter(h: Headers, data: unknown): number | undefined {
+/** Seconds to wait from retry_after in the body, a Retry-After header (seconds or HTTP date), or the minute reset. */
+function retryAfter(h: Headers, data: unknown, now: number): number | undefined {
   const fromBody = isObj(data) ? Number(data.retry_after ?? data.retryAfter) : NaN;
   if (Number.isFinite(fromBody) && fromBody > 0) return Math.ceil(fromBody);
-  const header = Number(h.get('retry-after'));
-  if (Number.isFinite(header) && header > 0) return Math.ceil(header);
+  const header = h.get('retry-after');
+  if (header) {
+    const secs = Number(header);
+    if (Number.isFinite(secs) && secs > 0) return Math.ceil(secs);
+    const at = Date.parse(header);
+    if (Number.isFinite(at)) return Math.max(1, Math.ceil((at - now) / 1000));
+  }
   const reset = Number(h.get('x-ratelimit-minutelimit-reset'));
   return Number.isFinite(reset) && reset > 0 ? Math.ceil(reset) : undefined;
 }

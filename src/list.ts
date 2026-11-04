@@ -37,6 +37,7 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
  * (max 100). Without it, page through from page 1 and stop as soon as `want` rows are in hand.
  */
 export async function fetchList(http: AroFloHttp, op: Op, path: string, query: Record<string, string>, want: number, startPage?: number): Promise<ListResult> {
+  want = Math.min(Math.max(1, Math.floor(want) || 1), MAX_ROWS);
   const pageable = op.q.some((p) => p.n === 'page') && op.q.some((p) => p.n === 'limit');
   const request = (q: Record<string, string>) => http.request('GET', path, { query: q, collection: op.pp.length === 0, template: op.k });
 
