@@ -50,3 +50,14 @@ export function usedOps(): Record<string, string[]> {
       .map((k) => [k, [...out[k]!].sort()])
   );
 }
+
+/**
+ * Facts about AroFlo behaviour the spec doesn't state, learned from live calls. Shown in aroflo_api
+ * details, and appended to an aroflo_get result only when the call uses the named parameter.
+ */
+export const HINTS: Record<string, Array<{ param?: string; text: string }>> = {
+  'GET /tasks': [
+    { param: 'requiredByTo', text: 'requiredByTo=D stops at D 00:00, so jobs due later on D are left out; to cover all of day D use requiredByTo=D+1 and drop rows due D+1.' }
+  ],
+  'GET /schedules': [{ param: 'scheduleZone', text: 'scheduleZone=USER lists the token user\'s own calendar for currentDate; a job\'s schedule is in aroflo_job.' }]
+};

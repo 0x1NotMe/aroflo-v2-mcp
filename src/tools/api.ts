@@ -1,6 +1,6 @@
 import type { Method, Op, Param } from '../catalog.js';
 import type { Config } from '../config.js';
-import { DEFAULT_FIELDS } from '../defaults.js';
+import { DEFAULT_FIELDS, HINTS } from '../defaults.js';
 import { cut, isObj, type Obj } from '../format.js';
 import { splitPath, UsageError } from '../request.js';
 import { writeAllowed } from '../writes.js';
@@ -16,9 +16,21 @@ function searchLine(op: Op): string {
   return `${op.k}\t${op.s}${shown ? `\tfilters: ${shown}` : ''}`;
 }
 
+/** A description worth its tokens says something the name and type don't: codes, formats, separators, defaults. */
+const informative = (d: string) => /\d|=|comma|format|default|only|must|required|true|false|exclusive|inclusive|before|after/i.test(d);
+
 function paramLine(p: Param): string {
   const type = p.e ? p.e.join('|') : (p.fmt ?? p.t ?? 'string');
-  return `  ${p.n}${p.r ? '*' : ''} (${type})${p.d ? ` ${cut(p.d, 100)}` : ''}`;
+  return `  ${p.n}${p.r ? '*' : ''} (${type})${p.d && informative(p.d) ? ` ${cut(p.d, 80)}` : ''}`;
+}
+
+/** Required, enum, formatted or explained params get a line each; plain ones share one line. */
+function paramLines(params: Param[]): string[] {
+  const detailed = params.filter((p) => p.r || p.e || p.fmt || (p.d && informative(p.d)) || !['string', undefined].includes(p.t));
+  const plain = params.filter((p) => !detailed.includes(p));
+  const out = detailed.map(paramLine);
+  if (plain.length) out.push(`  also (string): ${plain.map((p) => p.n).join(', ')}`);
+  return out;
 }
 
 function typeLabel(s: Obj): string {
@@ -53,14 +65,15 @@ export function describe(op: Op, cfg: Config): string {
   const lines = [`${op.k}: ${op.s}`];
   if (op.m !== 'GET' && !writeAllowed(cfg, op)) lines.push('(writes to this endpoint are not enabled on this server)');
   const params = op.q.filter((p) => p.n !== '_fields');
-  if (params.length) lines.push('query:', ...params.map(paramLine));
+  if (params.length) lines.push('query:', ...paramLines(params));
   if (op.m === 'GET' && op.f) {
     lines.push(`fields: ${op.f.filter((f) => f !== '_links').join(', ')}`);
     if (DEFAULT_FIELDS[op.k]) lines.push(`default fields: ${DEFAULT_FIELDS[op.k]} (full=true for all)`);
   }
   if (op.b && op.m !== 'GET') lines.push('body:', ...bodyLines(op.b, '  ', 0));
   if (op.ex !== undefined && op.m !== 'GET') lines.push(`example: ${cut(JSON.stringify(op.ex), 600)}`);
-  if (op.d) lines.push(`notes: ${cut(op.d.replace(/\s+/g, ' ').trim(), 1200, true)}`);
+  for (const h of HINTS[op.k] ?? []) lines.push(`hint: ${h.text}`);
+  if (op.d) lines.push(`notes: ${cut(op.d.replace(/\s+/g, ' ').trim(), 700, true)}`);
   return lines.join('\n');
 }
 
