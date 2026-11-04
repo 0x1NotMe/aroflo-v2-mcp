@@ -36,10 +36,10 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
  * Fetch up to `want` rows (max 500). With `startPage`, fetch exactly that page at `want` rows per page
  * (max 100). Without it, page through from page 1 and stop as soon as `want` rows are in hand.
  */
-export async function fetchList(http: AroFloHttp, op: Op, path: string, query: Record<string, string>, want: number, startPage?: number): Promise<ListResult> {
+export async function fetchList(http: AroFloHttp, op: Op, path: string, query: Record<string, string>, want: number, startPage?: number, signal?: AbortSignal): Promise<ListResult> {
   want = Math.min(Math.max(1, Math.floor(want) || 1), MAX_ROWS);
   const pageable = op.q.some((p) => p.n === 'page') && op.q.some((p) => p.n === 'limit');
-  const request = (q: Record<string, string>) => http.request('GET', path, { query: q, collection: op.pp.length === 0, template: op.k });
+  const request = (q: Record<string, string>) => http.request('GET', path, { query: q, collection: op.pp.length === 0, template: op.k, signal });
 
   if (!pageable) {
     const page = readPage((await request(query)).data);

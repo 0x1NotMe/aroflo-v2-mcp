@@ -46,12 +46,12 @@ export const jobTool: Tool = {
   async run(args, d) {
     const ref = await d.jobs.resolve('tasks', str(args, 'job'));
     const id = encodeURIComponent(ref.id);
-    const task = await d.http.request('GET', `/tasks/${id}`, { query: { _fields: JOB_FIELDS }, template: 'GET /tasks/{taskId}' });
+    const task = await d.http.request('GET', `/tasks/${id}`, { query: { _fields: JOB_FIELDS }, template: 'GET /tasks/{taskId}', signal: d.signal });
     const bu = await d.ctx.businessUnitId();
     const [labour, materials, notes] = await Promise.allSettled([
-      fetchList(d.http, d.catalog.get('GET /tasks/{taskId}/labours')!, `/tasks/${id}/labours`, { _fields: JOB_LABOUR_FIELDS }, 500),
-      d.http.request('GET', `/tasks/${id}/materials`, { query: { businessUnitId: bu, _fields: JOB_MATERIAL_FIELDS }, template: 'GET /tasks/{taskId}/materials' }),
-      d.http.request('GET', `/tasks/${id}/notes`, { query: { _fields: 'note,timestampCreated' }, template: 'GET /tasks/{task_id}/notes' })
+      fetchList(d.http, d.catalog.get('GET /tasks/{taskId}/labours')!, `/tasks/${id}/labours`, { _fields: JOB_LABOUR_FIELDS }, 500, undefined, d.signal),
+      d.http.request('GET', `/tasks/${id}/materials`, { query: { businessUnitId: bu, _fields: JOB_MATERIAL_FIELDS }, template: 'GET /tasks/{taskId}/materials', signal: d.signal }),
+      d.http.request('GET', `/tasks/${id}/notes`, { query: { _fields: 'note,timestampCreated' }, template: 'GET /tasks/{task_id}/notes', signal: d.signal })
     ]);
 
     rethrowAuth([labour, materials, notes]);

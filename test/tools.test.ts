@@ -48,6 +48,8 @@ const routes: Record<string, (call: Call) => Reply> = {
     }
   }),
   'GET /tasks/T60/notes': () => ({ body: Array.from({ length: 600 }, (_, i) => ({ id: `N${i}`, note: `n${i}` })) }),
+  'GET /tasks/T61/notes': () => ({ body: { _links: { self: '/x' }, items: Array.from({ length: 600 }, (_, i) => ({ id: `N${i}`, note: `n${i}` })) } }),
+  'GET /tasks/T1/assets': (call) => pagedList(Array.from({ length: 12 }, (_, i) => ({ id: `A${i}`, name: `Asset ${i}` })))(call),
   'GET /quotes/Q10': () => ({
     body: { id: 'Q10', jobNumber: 3030, name: 'Back yard', status: 'In Progress', acceptanceStatus: { id: 2, name: 'Awaiting Decision' }, client: { id: 'C1', name: 'Smith, Jo' }, counts: { total: 9900, tax: 900, taxInclusive: true, forms: 3, documents: 2 } }
   }),
@@ -104,6 +106,20 @@ describe('aroflo_get', () => {
     const n = await call('aroflo_get', { path: '/tasks/T60/notes' });
     expect(n.text.split('\n')[0]).toBe('25 of 600 rows (limit=N for more)');
     expect(n.text.split('\n')).toHaveLength(27);
+  });
+
+  it('pages endpoints that page even when the spec does not call them lists', async () => {
+    const { call, f } = setup();
+    const r = await call('aroflo_get', { path: '/tasks/T1/assets?page=2&limit=5' });
+    expect(f.calls.at(-1)!.query).toMatchObject({ page: '2', limit: '5' });
+    expect(r.text).toMatch(/^A5\t/m);
+  });
+
+  it('bounds an items envelope that carries other keys too', async () => {
+    const { call } = setup();
+    const r = await call('aroflo_get', { path: '/tasks/T61/notes?limit=2' });
+    expect(r.text.split('\n')[0]).toBe('2 of 600 rows (limit=N for more)');
+    expect(r.text.split('\n')).toHaveLength(4);
   });
 
   it('full=true drops the default columns', async () => {

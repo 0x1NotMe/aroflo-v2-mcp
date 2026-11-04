@@ -122,6 +122,11 @@ describe('record', () => {
 });
 
 describe('render', () => {
+  it('caps long lists and says how many were left out', () => {
+    const out = render({ items: Array.from({ length: 30 }, (_, i) => ({ id: `R${i}` })) });
+    expect(out.split('\n')).toHaveLength(27);
+    expect(out.endsWith('… 5 more rows')).toBe(true);
+  });
   it('tables an items envelope and records an object', () => {
     expect(render({ count: 1, page: {}, items: [{ id: 'A' }] })).toBe('id\nA');
     expect(render({ id: 'A', name: 'x' })).toBe('id: A\nname: x');

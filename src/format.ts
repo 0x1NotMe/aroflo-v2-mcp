@@ -212,8 +212,10 @@ export function record(input: unknown, opts: { maxText?: number; maxRows?: numbe
 }
 
 /** Render any response body: `{items: [...]}` envelopes as tables, objects as records. */
-export function render(data: unknown, opts: { columns?: string[]; maxText?: number; maxCell?: number; full?: boolean } = {}): string {
-  if (Array.isArray(data)) return table(data, opts);
-  if (isObj(data) && Array.isArray(data.items)) return table(data.items, opts);
-  return record(data, opts);
+export function render(data: unknown, opts: { columns?: string[]; maxText?: number; maxCell?: number; full?: boolean; maxRows?: number } = {}): string {
+  const rows = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.items) ? data.items : undefined;
+  if (!rows) return record(data, opts);
+  const max = opts.maxRows ?? (opts.full ? 500 : 25);
+  const body = table(rows.slice(0, max), opts);
+  return rows.length > max ? `${body}\n… ${rows.length - max} more rows` : body;
 }
