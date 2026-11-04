@@ -30,10 +30,10 @@ You need Node 22 or later and an AroFlo API token.
 3. Put the token in a file only you can read. Don't paste it into a config file. With the token on the clipboard:
 
    ```bash
-   (umask 077; mkdir -p ~/.config/aroflo && pbpaste > ~/.config/aroflo/token)
+   (umask 077; mkdir -p ~/.config/aroflo && pbpaste > ~/.config/aroflo/token && chmod 600 ~/.config/aroflo/token)
    ```
 
-   `umask 077` makes the folder and file private from the moment they exist.
+   `umask 077` makes a new folder and file private from the moment they exist, and `chmod 600` fixes a token file that already existed. The server warns at startup if the file is readable by others.
 
 4. Check the token works:
 

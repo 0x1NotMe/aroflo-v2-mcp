@@ -40,8 +40,8 @@ export const quoteTool: Tool = {
     const ref = await d.jobs.resolve('quotes', str(args, 'quote'));
     const id = encodeURIComponent(ref.id);
     const lineOp = d.catalog.get('GET /quotes/{quoteId}/lineitems')!;
-    const header = await d.http.request('GET', `/quotes/${id}`, { query: { _fields: QUOTE_HEADER_FIELDS }, template: 'GET /quotes/{quoteId}' });
-    const [takeoffs] = await Promise.allSettled([fetchList(d.http, d.catalog.get('GET /quotes/{quoteId}/takeoffs')!, `/quotes/${id}/takeoffs`, {}, 500)]);
+    const header = await d.http.request('GET', `/quotes/${id}`, { query: { _fields: QUOTE_HEADER_FIELDS }, template: 'GET /quotes/{quoteId}', signal: d.signal });
+    const [takeoffs] = await Promise.allSettled([fetchList(d.http, d.catalog.get('GET /quotes/{quoteId}/takeoffs')!, `/quotes/${id}/takeoffs`, {}, 500, undefined, d.signal)]);
     rethrowAuth([takeoffs]);
 
     const h: Obj = isObj(header.data) ? { ...header.data } : {};
@@ -68,7 +68,7 @@ export const quoteTool: Tool = {
     const path = `/quotes/${id}/lineitems`;
     if (flag(args, 'lines') && sections.length) {
       for (const s of sections.slice(0, MAX_SECTIONS)) {
-        const r = await fetchList(d.http, lineOp, path, { takeoffId: String(s.id), _fields: QUOTE_LINE_FIELDS }, 500);
+        const r = await fetchList(d.http, lineOp, path, { takeoffId: String(s.id), _fields: QUOTE_LINE_FIELDS }, 500, undefined, d.signal);
         const rows = r.items.filter(isObj).map((l) => lineRow(l, true));
         out.push(`## ${String(s.name)} (${rows.length}${r.next ? '+' : ''} lines)`, table(rows, { maxCell: 50 }));
       }
@@ -76,7 +76,7 @@ export const quoteTool: Tool = {
       return out.join('\n');
     }
 
-    const all = await fetchList(d.http, lineOp, path, { _fields: QUOTE_LINE_FIELDS }, 500);
+    const all = await fetchList(d.http, lineOp, path, { _fields: QUOTE_LINE_FIELDS }, 500, undefined, d.signal);
     const lines = all.items.filter(isObj);
     const shown = flag(args, 'lines') ? lines : lines.filter((l) => l.parentId === null || l.parentId === undefined);
     const of = all.total ?? lines.length;

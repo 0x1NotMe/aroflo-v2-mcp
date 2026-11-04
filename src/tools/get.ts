@@ -57,8 +57,9 @@ export const getTool: Tool = {
     const query = await buildQuery(op, search, d.ctx);
     const maxCell = full ? 4_000 : 60;
 
-    if (op.list) {
-      const r = await fetchList(d.http, op, target.path, query, want, startPage);
+    // Anything AroFlo pages is a list, whatever the spec says its response looks like.
+    if (op.list || pageable) {
+      const r = await fetchList(d.http, op, target.path, query, want, startPage, d.signal);
       const columns = query._fields ? fieldNames(query._fields) : defaults ? fieldNames(defaults) : undefined;
       const rows = defaults && !serverSide ? r.items.map((row) => (isObj(row) ? Object.fromEntries(columns!.filter((c) => c in row).map((c) => [c, row[c]])) : row)) : r.items;
       const body = table(rows, { columns, maxCell });
@@ -67,7 +68,8 @@ export const getTool: Tool = {
     }
     const res = await d.http.request('GET', target.path, { query, collection: op.pp.length === 0, template: op.k, signal: d.signal });
     // Some endpoints the spec calls single records answer with a list: bound those like any list.
-    const rows = Array.isArray(res.data) ? res.data : isObj(res.data) && Array.isArray(res.data.items) && Object.keys(res.data).every((k) => ['items', 'count', 'page'].includes(k)) ? res.data.items : undefined;
+    const envelope = (o: Record<string, unknown>) => Array.isArray(o.items) && Object.keys(o).every((k) => ['items', 'count', 'page', '_links'].includes(k));
+    const rows = Array.isArray(res.data) ? res.data : isObj(res.data) && envelope(res.data) ? (res.data.items as unknown[]) : undefined;
     if (rows) {
       const shown = rows.slice(0, want);
       const head = shown.length < rows.length ? `${shown.length} of ${rows.length} rows (limit=N for more)` : `${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`;
