@@ -11,6 +11,8 @@ Stdio MCP server for the AroFlo API v2 (`https://api.aroflo.com/v2`). The API is
 - `npm run smoke:live` runs the tools read-only against live AroFlo (needs `AROFLO_V2_API_KEY`) and prints tokens, calls and the first line of each result. `--show` prints full results: real data, keep it out of the repo.
 - `npm run measure` prints token counts for tools/list and sample outputs.
 
+Debugging: `AROFLO_V2_DEBUG=1` logs one line per request (operation template, status, ms) to stderr. `AROFLO_V2_DEBUG_FILE=<path>` records the connecting client's name and declared capabilities, which is how to check whether a client supports confirm dialogs.
+
 ## Layout
 
 - `src/tools/` has one file per MCP tool. `src/format.ts` renders compact output. `src/http.ts` is the API client. `src/jobs.ts` finds tasks and quotes by job number.
