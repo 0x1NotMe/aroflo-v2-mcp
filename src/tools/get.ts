@@ -1,4 +1,4 @@
-import { DEFAULT_FIELDS } from '../defaults.js';
+import { DEFAULT_FIELDS, HINTS } from '../defaults.js';
 import { isObj, render, table } from '../format.js';
 import { fetchList, type ListResult, MAX_ROWS } from '../list.js';
 import { buildQuery, fieldNames, resolveTarget, UsageError } from '../request.js';
@@ -63,7 +63,8 @@ export const getTool: Tool = {
       const columns = query._fields ? fieldNames(query._fields) : defaults ? fieldNames(defaults) : undefined;
       const rows = defaults && !serverSide ? r.items.map((row) => (isObj(row) ? Object.fromEntries(columns!.filter((c) => c in row).map((c) => [c, row[c]])) : row)) : r.items;
       const body = table(rows, { columns, maxCell });
-      return body ? `${listHeader(r)}\n${body}` : listHeader(r);
+      const hints = (HINTS[op.k] ?? []).filter((h) => h.param && h.param in query).map((h) => `hint: ${h.text}`);
+      return [listHeader(r), body, ...hints].filter(Boolean).join('\n');
     }
     const res = await d.http.request('GET', target.path, { query, collection: op.pp.length === 0, template: op.k });
     return render(res.data, { maxText: full ? 100_000 : 600, maxCell, full }) || '(empty response)';

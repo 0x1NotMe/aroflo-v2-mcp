@@ -81,6 +81,12 @@ describe('aroflo_get', () => {
     expect(f.calls[0]!.query._fields).toBeUndefined();
   });
 
+  it('adds a hint only when the call uses a parameter with known quirks', async () => {
+    const { call } = setup();
+    expect((await call('aroflo_get', { path: '/tasks?requiredByFrom=2026-11-05&requiredByTo=2026-11-05&limit=2' })).text).toMatch(/\nhint: requiredByTo=D stops at D 00:00/);
+    expect((await call('aroflo_get', { path: '/tasks?limit=2' })).text).not.toContain('hint:');
+  });
+
   it('full=true drops the default columns', async () => {
     const { call, f } = setup();
     await call('aroflo_get', { path: '/tasks?limit=1', full: true });
