@@ -58,6 +58,33 @@ You need Node 22 or later and an AroFlo API token.
    claude mcp add aroflo -e AROFLO_V2_TOKEN_FILE=/Users/you/.config/aroflo/token -- node /full/path/to/aroflo-v2-mcp/dist/index.js
    ```
 
+### Installing from a package file (no GitHub access)
+
+On a machine that has the repo, build a package file:
+
+```bash
+npm ci && npm run build && npm pack
+```
+
+That writes `aroflo-v2-mcp-0.1.0.tgz`. On the other Mac (Node 22 or later), install it and print the two paths Codex needs:
+
+```bash
+npm install -g ./aroflo-v2-mcp-0.1.0.tgz
+which node
+echo "$(npm root -g)/aroflo-v2-mcp/dist/index.js"
+```
+
+Then do steps 3 and 4 above, and in `~/.codex/config.toml` use the two printed paths. Full paths matter: Codex started from the Dock may not find `node` on its own.
+
+```toml
+[mcp_servers.aroflo]
+command = "/opt/homebrew/bin/node"   # what `which node` printed
+args = ["/opt/homebrew/lib/node_modules/aroflo-v2-mcp/dist/index.js"]   # the second printed line
+env = { AROFLO_V2_TOKEN_FILE = "/Users/you/.config/aroflo/token" }
+```
+
+To update, install the new package file the same way. Codex uses it the next time it starts.
+
 ## Settings
 
 All settings are environment variables in the MCP server config.
