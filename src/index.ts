@@ -4,7 +4,14 @@ import { makeDeps } from './deps.js';
 import { createServer, errorText } from './server.js';
 import { VERSION } from './version.js';
 
-const deps = makeDeps();
+let deps: ReturnType<typeof makeDeps>;
+try {
+  deps = makeDeps();
+} catch (err) {
+  // Usually spec/catalog.json missing next to dist/ (a copy of dist/ alone): one line, not a stack trace.
+  process.stderr.write(`aroflo-v2-mcp: cannot start: ${(err as Error).message.split('\n')[0]}. Reinstall from the repo: npm ci && npm run build.\n`);
+  process.exit(1);
+}
 const arg = process.argv[2];
 
 if (arg === '--version') {
