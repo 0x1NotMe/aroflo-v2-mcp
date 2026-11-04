@@ -1,0 +1,54 @@
+# AroFlo ships v2 API changes most weeks (release notes on Sundays). Every Monday morning Sydney time
+# this re-extracts the spec from the public docs site and, when it changed, opens a pull request with
+# the classified diff. The tests run on the new spec: they fail when AroFlo removed something this
+# server reads (spec/used.json). No AroFlo token is involved.
+name: spec-watch
+on:
+  schedule:
+    - cron: '0 22 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run spec:extract
+      - run: npm run spec:catalog
+      - id: diff
+        run: |
+          node scripts/spec-diff.mjs > "$RUNNER_TEMP/spec-diff.md"
+          if git diff --quiet -- spec/; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+      - id: tests
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          if npm test > "$RUNNER_TEMP/tests.txt" 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTS_OK: ${{ steps.tests.outputs.ok }}
+        run: |
+          day=$(date -u +%Y-%m-%d)
+          branch="spec/$day"
+          title="AroFlo v2 spec update $day"
+          body="$RUNNER_TEMP/spec-diff.md"
+          if [ "$TESTS_OK" != "true" ]; then
+            title="$title: tests fail, something this server reads changed"
+            { echo; echo '## Test output (tail)'; echo; echo '```'; tail -40 "$RUNNER_TEMP/tests.txt"; echo '```'; } >> "$body"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add spec/
+          git commit -m "chore(spec): AroFlo v2 spec update $day"
+          git push --force -u origin "$branch"
+          gh pr create --base main --head "$branch" --title "$title" --body-file "$body" || gh pr edit "$branch" --title "$title" --body-file "$body"
