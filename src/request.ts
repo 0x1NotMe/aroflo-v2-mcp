@@ -11,6 +11,8 @@ export interface Target {
   op: Op;
   /** Concrete path, ids filled in. */
   path: string;
+  /** Path parameter values as filled in (business-unit placeholders resolved). */
+  params: Record<string, string>;
   search: URLSearchParams;
 }
 
@@ -41,6 +43,7 @@ export async function resolveTarget(catalog: ApiCatalog, method: Method, input: 
     throw new UsageError(`No ${method} endpoint matches ${path}.${close ? ` Close: ${close}.` : ''} aroflo_api lists them.`);
   }
   let concrete = match.op.p;
+  const params: Record<string, string> = {};
   for (const name of match.op.pp) {
     let value = match.params[name] ?? '';
     // Ids are opaque tokens. "..", "." or a decoded slash would let URL normalisation send the request
@@ -50,9 +53,10 @@ export async function resolveTarget(catalog: ApiCatalog, method: Method, input: 
       if (!BU_NAMES.has(name)) throw new UsageError(`${match.op.p} needs a real ${name}, not ${value}.`);
       value = await bu.businessUnitId();
     }
+    params[name] = value;
     concrete = concrete.replace(`{${name}}`, encodeURIComponent(value));
   }
-  return { op: match.op, path: concrete, search };
+  return { op: match.op, path: concrete, params, search };
 }
 
 function coerce(p: Param, raw: string): string {

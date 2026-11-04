@@ -173,12 +173,13 @@ describe('aroflo_quote', () => {
   });
 });
 
-describe('aroflo_write', () => {
+describe('aroflo_write (code mode: client without confirm dialogs)', () => {
   const writable = () => {
     const dir = mkdtempSync(join(tmpdir(), 'aroflo-audit-'));
     const auditLog = join(dir, 'state', 'audit.jsonl');
     return { ...setup({ writeOps: ['Clients', 'Notes'], auditLog }), auditLog };
   };
+  const codeIn = (text: string) => /confirm="([0-9a-f]+)"/.exec(text)![1]!;
 
   it('is not offered on a read-only server', () => {
     expect(setup().tools.map((t) => t.def.name)).not.toContain('aroflo_write');
@@ -188,9 +189,9 @@ describe('aroflo_write', () => {
     const { call, f, auditLog } = writable();
     const args = { method: 'PATCH', path: '/clients/C1', body: { individual: true } };
     const preview = await call('aroflo_write', args);
-    expect(preview.text).toMatch(/^PREVIEW, nothing sent: PATCH \/clients\/C1/);
+    expect(preview.text).toMatch(/^PREVIEW, nothing sent:\nPATCH \/clients\/C1\nbody: \{"individual":true\}/);
     expect(f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
-    const code = /confirm="([0-9a-f]+)"/.exec(preview.text)![1]!;
+    const code = codeIn(preview.text);
 
     const sent = await call('aroflo_write', { ...args, confirm: code });
     expect(sent.text).toMatch(/^sent: PATCH \/clients\/\{clientId\} -> 200/);
@@ -207,29 +208,99 @@ describe('aroflo_write', () => {
     expect(statSync(auditLog).mode & 0o777).toBe(0o600);
   });
 
+  it('gives every preview a fresh code, so a used code never comes back', async () => {
+    const { call, f } = writable();
+    const args = { method: 'PATCH', path: '/clients/C1', body: { individual: true } };
+    const first = codeIn((await call('aroflo_write', args)).text);
+    await call('aroflo_write', { ...args, confirm: first });
+    const second = codeIn((await call('aroflo_write', args)).text);
+    expect(second).not.toBe(first);
+    expect((await call('aroflo_write', { ...args, confirm: first })).text).toMatch(/expired or was already used/);
+    expect(f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(1);
+  });
+
   it('refuses a code from a different payload', async () => {
     const { call } = writable();
-    const preview = await call('aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: true } });
-    const code = /confirm="([0-9a-f]+)"/.exec(preview.text)![1]!;
+    const code = codeIn((await call('aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: true } })).text);
     const r = await call('aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: false }, confirm: code });
     expect(r.text).toMatch(/for a different request/);
   });
 
-  it('rejects undocumented fields and operations that are not enabled, before any call', async () => {
+  it('shows the whole body in the preview, however long', async () => {
+    const { call } = writable();
+    const body = { taskNotes: [{ content: 'x'.repeat(5000), filter: 'SHOW_CLIENT' }] };
+    const r = await call('aroflo_write', { method: 'POST', path: '/tasks/T50/notes/bulk', body });
+    expect(r.text).toContain(JSON.stringify(body));
+  });
+
+  it('rejects undocumented fields, non-id path values and operations that are not enabled, before any call', async () => {
     const { call, f } = writable();
-    const r = await call('aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: true, colour: 'blue' } });
-    expect(r.text).toContain('body has an undocumented field "colour"');
-    const q = await call('aroflo_write', { method: 'POST', path: '/quotes', body: {} });
-    expect(q.text).toMatch(/POST \/quotes is not enabled on this server. Enabled: Clients, Notes/);
+    expect((await call('aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: true, colour: 'blue' } })).text).toContain('body has an undocumented field "colour"');
+    expect((await call('aroflo_write', { method: 'PATCH', path: '/clients/jo%40example.com', body: { individual: true } })).text).toMatch(/clientId must be an AroFlo id/);
+    expect((await call('aroflo_write', { method: 'POST', path: '/quotes', body: {} })).text).toMatch(/POST \/quotes is not enabled on this server. Enabled: Clients, Notes/);
     expect(f.calls.filter((c) => c.method !== 'GET')).toHaveLength(0);
   });
 
   it('reports a 207 partial success', async () => {
     const { call } = writable();
     const args = { method: 'POST', path: '/tasks/T50/notes/bulk', body: { taskNotes: [{ content: 'a', filter: 'INTERNAL_ONLY' }, { content: 'b', filter: 'INTERNAL_ONLY' }] } };
-    const code = /confirm="([0-9a-f]+)"/.exec((await call('aroflo_write', args)).text)![1]!;
-    const r = await call('aroflo_write', { ...args, confirm: code });
+    const r = await call('aroflo_write', { ...args, confirm: codeIn((await call('aroflo_write', args)).text) });
     expect(r.text).toMatch(/-> 207/);
     expect(r.text).toMatch(/some items failed/);
+  });
+});
+
+describe('aroflo_write (dialog mode: client with MCP elicitation, e.g. Codex)', () => {
+  function dialogSetup(answer: boolean) {
+    const f = fakeFetch(routes);
+    const cfg = testConfig({ writeOps: ['Clients'] });
+    const asked: string[] = [];
+    const deps = { ...makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)), askUser: async (m: string) => (asked.push(m), answer) };
+    const tools = toolsFor(cfg, 'dialog');
+    return { f, asked, tools, call: (args: Record<string, unknown>) => callTool(tools, 'aroflo_write', args, deps) };
+  }
+
+  it('has no confirm parameter: the user answers a dialog the model cannot see', () => {
+    const def = dialogSetup(true).tools.find((t) => t.def.name === 'aroflo_write')!.def;
+    expect(Object.keys(def.inputSchema.properties)).toEqual(['method', 'path', 'body']);
+  });
+
+  it('sends only after the user accepts, showing the exact request', async () => {
+    const yes = dialogSetup(true);
+    expect((await yes.call({ method: 'PATCH', path: '/clients/C1', body: { individual: true } })).text).toMatch(/^sent: /);
+    expect(yes.asked[0]).toContain('PATCH /clients/C1');
+    expect(yes.asked[0]).toContain('"individual": true');
+    const no = dialogSetup(false);
+    expect((await no.call({ method: 'PATCH', path: '/clients/C1', body: { individual: true } })).text).toBe('Not sent: the user declined.');
+    expect(no.f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
+  });
+});
+
+describe('composite safety and size', () => {
+  it('stops a composite on a rejected token instead of carrying on', async () => {
+    const f = fakeFetch({ ...routes, 'GET /quotes/Q10/takeoffs': () => ({ status: 401, body: { error: 'Unauthorized' } }) });
+    const cfg = testConfig();
+    const r = await callTool(toolsFor(cfg), 'aroflo_quote', { quote: 'Q10' }, makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)));
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/^401: AroFlo rejected the token/);
+    expect(f.calls.some((c) => c.path.endsWith('/lineitems'))).toBe(false);
+  });
+
+  it('caps materials on a big job and says how to get the rest', async () => {
+    const many = Array.from({ length: 80 }, (_, i) => ({ itemName: `Item ${i}`, quantity: i, sell: i * 2 }));
+    const f = fakeFetch({ ...routes, 'GET /tasks/T50/materials': () => ({ body: { items: many } }) });
+    const cfg = testConfig();
+    const r = await callTool(toolsFor(cfg), 'aroflo_job', { job: 'T50' }, makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)));
+    expect(r.text).toContain('materials (80, first 25; all: aroflo_get /tasks/T50/materials?limit=80):');
+    expect(r.text).not.toContain('Item 25\t');
+  });
+});
+
+describe('arguments', () => {
+  it('reads booleans strictly', async () => {
+    const { call } = setup();
+    expect((await call('aroflo_quote', { quote: 'Q10', lines: 'TRUE' })).text).toContain('## HARDSCAPES');
+    expect((await call('aroflo_quote', { quote: 'Q10', lines: 1 })).text).toContain('## HARDSCAPES');
+    expect((await call('aroflo_quote', { quote: 'Q10', lines: 'maybe' })).text).toBe('lines must be true or false.');
   });
 });

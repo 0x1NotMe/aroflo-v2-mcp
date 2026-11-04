@@ -14,9 +14,12 @@ interface Page {
   min: number;
   max: number;
   pages: number;
+  at: number;
 }
 
 const PAGE = 100;
+/** Page boundaries go stale as jobs are added; ids found stay cached. */
+const PAGE_TTL_MS = 120_000;
 const NOUN: Record<Kind, string> = { tasks: 'job', quotes: 'quote' };
 
 /**
@@ -50,24 +53,39 @@ export class JobIndex {
     if (hit()) return hit();
     const sorted = kind === 'tasks';
 
-    const first = await this.page(kind, 1);
+    let first = await this.page(kind, 1);
     if (hit()) return hit();
+    if (first.pages <= 1) {
+      if (first.max >= jobNumber) return undefined;
+      first = await this.page(kind, 1, true); // a new job may have arrived since page 1 was cached
+      return hit();
+    }
+    let last = await this.page(kind, first.pages);
+    if (hit()) return hit();
+    if (jobNumber > last.max) {
+      // New jobs land at the end: re-read the page count and the last page before saying no.
+      first = await this.page(kind, 1, true);
+      last = await this.page(kind, first.pages, true);
+      if (hit()) return hit();
+    }
     const pages = first.pages;
-    if (pages <= 1) return undefined;
-    const last = await this.page(kind, pages);
-    if (hit()) return hit();
     if (sorted && (jobNumber < first.min || jobNumber > last.max)) return undefined;
 
+    // Interpolation for the first probes (fast on evenly spread numbers), then bisection, which
+    // bounds the worst case at about log2(pages) calls however the numbers are spread.
     let lo = 1;
     let hi = pages;
     let loMax = first.max;
     let hiMin = last.min;
-    let probe = jobNumber - first.max < last.min - jobNumber ? 1 : pages;
-    for (let i = 0; i < 14 && hi - lo > 1; i++) {
-      const frac = hiMin > loMax ? (jobNumber - loMax) / (hiMin - loMax) : 0.5;
-      probe = Math.min(hi - 1, Math.max(lo + 1, lo + 1 + Math.floor(frac * (hi - lo - 1))));
+    let probe = 1;
+    for (let i = 0; hi - lo > 1 && i < 40; i++) {
+      if (i < 4 && hiMin > loMax) {
+        const frac = (jobNumber - loMax) / (hiMin - loMax);
+        probe = Math.min(hi - 1, Math.max(lo + 1, lo + 1 + Math.floor(frac * (hi - lo - 1))));
+      } else probe = Math.floor((lo + hi) / 2);
       const p = await this.page(kind, probe);
       if (hit()) return hit();
+      if (p.min > p.max) return undefined; // empty page: the data shrank under us
       if (jobNumber < p.min) {
         hi = probe;
         hiMin = p.min;
@@ -77,24 +95,29 @@ export class JobIndex {
       } else break; // inside this page's range but not on it
     }
 
-    // The list can be locally out of order: look next door before giving up.
+    // The quote list can be locally out of order: look next door before giving up.
     for (const n of [probe - 1, probe + 1, probe - 2, probe + 2]) {
-      if (n < 1 || n > pages || this.fetched[kind].has(n)) continue;
+      if (n < 1 || n > pages || this.fresh(kind, n)) continue;
       await this.page(kind, n);
       if (hit()) return hit();
     }
     if (sorted) return undefined;
     for (let n = 1; n <= pages; n++) {
-      if (this.fetched[kind].has(n)) continue;
+      if (this.fresh(kind, n)) continue;
       await this.page(kind, n);
       if (hit()) return hit();
     }
     return undefined;
   }
 
-  private async page(kind: Kind, n: number): Promise<Page> {
+  private fresh(kind: Kind, n: number): boolean {
+    const p = this.fetched[kind].get(n);
+    return p !== undefined && Date.now() - p.at < PAGE_TTL_MS;
+  }
+
+  private async page(kind: Kind, n: number, refresh = false): Promise<Page> {
     const known = this.fetched[kind].get(n);
-    if (known) return known;
+    if (known && !refresh && this.fresh(kind, n)) return known;
     const query: Record<string, string> = { _fields: 'id,jobNumber,name', page: String(n), limit: String(PAGE) };
     if (kind === 'tasks') Object.assign(query, { sortBy: 'jobnumber', ascending: 'true' });
     const res = await this.http.request('GET', `/${kind}`, { query, collection: true, template: `GET /${kind}` });
@@ -111,7 +134,7 @@ export class JobIndex {
       max = Math.max(max, r.jobNumber);
     }
     const pages = isObj(data) && isObj(data.page) && typeof data.page.count === 'number' ? data.page.count : 1;
-    const page = { min, max, pages };
+    const page = { min, max, pages, at: Date.now() };
     this.fetched[kind].set(n, page);
     return page;
   }

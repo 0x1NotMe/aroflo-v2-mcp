@@ -1,5 +1,6 @@
+import { writeFileSync } from 'node:fs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import type { Config } from './config.js';
 import { ApiError } from './http.js';
 import { UsageError } from './request.js';
@@ -17,9 +18,10 @@ export const INSTRUCTIONS =
 /** Low daily budget: tell the model, so it stops spending calls. */
 const BUDGET_WARN = 250;
 
-export function toolsFor(cfg: Config): Tool[] {
+/** The write tool's confirm mode depends on the client, so the tool list is built after initialize. */
+export function toolsFor(cfg: Config, writeMode: 'dialog' | 'code' = 'code'): Tool[] {
   const tools = [jobTool, quoteTool, getTool, apiTool];
-  if (cfg.writeOps.length) tools.push(makeWriteTool(cfg));
+  if (cfg.writeOps.length) tools.push(makeWriteTool(cfg, writeMode));
   return tools;
 }
 
@@ -42,11 +44,26 @@ export async function callTool(tools: Tool[], name: string, args: Record<string,
 }
 
 export function createServer(deps: Deps): Server {
-  const tools = toolsFor(deps.cfg);
   const server = new Server({ name: 'aroflo-v2', version: VERSION }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS });
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: tools.map((t) => t.def) }));
+  // AROFLO_V2_DEBUG_FILE: record which client connected and what it supports (no AroFlo data).
+  const debugFile = process.env.AROFLO_V2_DEBUG_FILE;
+  if (debugFile) server.oninitialized = () => writeFileSync(debugFile, `${JSON.stringify({ client: server.getClientVersion(), capabilities: server.getClientCapabilities() })}\n`);
+  const canAsk = () => server.getClientCapabilities()?.elicitation !== undefined;
+  const askUser = async (message: string) => {
+    const r = await server.elicitInput({
+      mode: 'form',
+      message,
+      requestedSchema: { type: 'object', properties: { send: { type: 'boolean', title: 'Send to AroFlo', default: false } }, required: ['send'] }
+    });
+    return r.action === 'accept' && r.content?.send === true;
+  };
+  const current = () => toolsFor(deps.cfg, canAsk() ? 'dialog' : 'code');
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: current().map((t) => t.def) }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const { text, isError } = await callTool(tools, req.params.name, (req.params.arguments ?? {}) as Record<string, unknown>, deps);
+    const tools = current();
+    if (!tools.some((t) => t.def.name === req.params.name)) throw new McpError(ErrorCode.InvalidParams, `Unknown tool ${req.params.name}. Tools: ${tools.map((t) => t.def.name).join(', ')}.`);
+    const callDeps = canAsk() ? { ...deps, askUser } : deps;
+    const { text, isError } = await callTool(tools, req.params.name, (req.params.arguments ?? {}) as Record<string, unknown>, callDeps);
     return { content: [{ type: 'text' as const, text }], ...(isError ? { isError: true } : {}) };
   });
   return server;
