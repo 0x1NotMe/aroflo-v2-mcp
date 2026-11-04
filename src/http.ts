@@ -33,6 +33,8 @@ export interface RequestOptions {
   template?: string;
   /** Set only by the write tool, after the allowlist check and the user's confirm. */
   confirmedWrite?: boolean;
+  /** The MCP client's cancellation for this tool call. */
+  signal?: AbortSignal;
 }
 
 export interface ApiResponse {
@@ -90,6 +92,7 @@ export class AroFloHttp {
 
     for (let attempt = 1; ; attempt++) {
       await this.pace();
+      if (opts.signal?.aborted) throw new ApiError('Cancelled before sending; nothing was sent.', 0);
       const started = this.now();
       let res: Response;
       let text: string;
@@ -98,7 +101,9 @@ export class AroFloHttp {
           method,
           headers,
           body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-          signal: AbortSignal.timeout(this.cfg.timeoutMs)
+          // Never follow a redirect: a 307/308 would resend a confirmed write somewhere unvalidated.
+          redirect: 'error',
+          signal: opts.signal ? AbortSignal.any([AbortSignal.timeout(this.cfg.timeoutMs), opts.signal]) : AbortSignal.timeout(this.cfg.timeoutMs)
         });
         this.readRate(res.headers);
         text = await res.text();

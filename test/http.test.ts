@@ -84,6 +84,13 @@ describe('AroFloHttp', () => {
     expect(f.calls).toHaveLength(0);
   });
 
+  it('never follows redirects', async () => {
+    let seen: RequestInit | undefined;
+    const http = new AroFloHttp(testConfig(), async (_u, init) => ((seen = init), new Response('{}')), noSleep);
+    await http.request('GET', '/tasks');
+    expect(seen?.redirect).toBe('error');
+  });
+
   it('fails clearly without a token and makes no call', async () => {
     const f = fakeFetch({});
     const http = new AroFloHttp(testConfig({ token: undefined, tokenError: 'no AroFlo token: set AROFLO_V2_API_KEY' }), f.fn, noSleep);

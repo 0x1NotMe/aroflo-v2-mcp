@@ -13,7 +13,8 @@ if (arg === '--version') {
   // Setup and rotation check: one read-only call, never prints the token.
   const writes = deps.cfg.writeOps.length ? `on for ${deps.cfg.writeOps.join(', ')}` : 'off (read-only)';
   try {
-    await deps.ctx.businessUnitId();
+    // Always a real authenticated read, even when a business unit id is configured.
+    await deps.http.request('GET', '/businessunits', { query: { _fields: 'id', limit: '1' }, collection: true, template: 'GET /businessunits' });
     const left = deps.http.rate.dailyRemaining;
     process.stdout.write(`token: OK${left !== undefined ? `, AroFlo calls left today: ${left}` : ''}\nwrites: ${writes}\n`);
   } catch (err) {
