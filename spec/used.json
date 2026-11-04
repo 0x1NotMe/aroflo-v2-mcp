@@ -1,0 +1,180 @@
+{
+ "ops": {
+  "GET /businessunits": [
+   "id",
+   "param:_fields",
+   "param:limit"
+  ],
+  "GET /businessunits/{businessUnitId}/inventoryitems": [
+   "costPrice",
+   "description",
+   "id",
+   "partNo",
+   "sellEx",
+   "uom"
+  ],
+  "GET /invoices": [
+   "balanceDue",
+   "client",
+   "dueDate",
+   "id",
+   "invoiceNumber",
+   "invoicedDateTime",
+   "status",
+   "totalAmountInc"
+  ],
+  "GET /locations": [
+   "address1",
+   "archived",
+   "id",
+   "postCode",
+   "siteContact",
+   "suburb"
+  ],
+  "GET /projects": [
+   "client",
+   "endDate",
+   "id",
+   "manager",
+   "name",
+   "projectNumber",
+   "startDate",
+   "status"
+  ],
+  "GET /purchaseorders": [
+   "id",
+   "jobNumber",
+   "orderNumber",
+   "purchaseDate",
+   "status",
+   "supplierName",
+   "totalAmountInc"
+  ],
+  "GET /quotes": [
+   "id",
+   "jobNumber",
+   "name",
+   "param:_fields",
+   "param:limit",
+   "param:page"
+  ],
+  "GET /quotes/{quoteId}": [
+   "acceptanceStatus",
+   "client",
+   "counts",
+   "description",
+   "dueDate",
+   "estimatedByUser",
+   "id",
+   "jobNumber",
+   "locationText",
+   "name",
+   "param:_fields",
+   "requested",
+   "status",
+   "substatus",
+   "taskType"
+  ],
+  "GET /quotes/{quoteId}/lineitems": [
+   "isAssembly",
+   "isOptional",
+   "item",
+   "lineTotal",
+   "param:_fields",
+   "param:limit",
+   "param:page",
+   "param:takeoffId",
+   "parentId",
+   "partNumber",
+   "quantity",
+   "type",
+   "unitSell",
+   "uom"
+  ],
+  "GET /quotes/{quoteId}/takeoffs": [
+   "breakdown",
+   "id",
+   "name",
+   "param:limit",
+   "param:page"
+  ],
+  "GET /tasks": [
+   "client",
+   "dueDate",
+   "id",
+   "jobNumber",
+   "location",
+   "name",
+   "param:_fields",
+   "param:ascending",
+   "param:limit",
+   "param:page",
+   "param:sortBy",
+   "requestedDateTime",
+   "status",
+   "substatus",
+   "taskType"
+  ],
+  "GET /tasks/{taskId}": [
+   "client",
+   "description",
+   "dueDate",
+   "id",
+   "jobNumber",
+   "location",
+   "locationText",
+   "name",
+   "param:_fields",
+   "priority",
+   "project",
+   "requestedDateTime",
+   "resources",
+   "schedule",
+   "status",
+   "substatus",
+   "taskType"
+  ],
+  "GET /tasks/{taskId}/labours": [
+   "date",
+   "hours",
+   "id",
+   "note",
+   "param:_fields",
+   "param:limit",
+   "param:page",
+   "user",
+   "workType"
+  ],
+  "GET /tasks/{taskId}/materials": [
+   "itemName",
+   "param:_fields",
+   "param:businessUnitId",
+   "partNumber",
+   "quantity",
+   "sell",
+   "unitType"
+  ],
+  "GET /tasks/{task_id}/notes": [
+   "note",
+   "param:_fields",
+   "timestampCreated"
+  ],
+  "GET /timesheets/entries": [
+   "date",
+   "hours",
+   "id",
+   "note",
+   "trackingCentre",
+   "user",
+   "workType"
+  ],
+  "GET /users": [
+   "email",
+   "familyName",
+   "givenName",
+   "id",
+   "mobile",
+   "position"
+  ]
+ }
+}

@@ -25,7 +25,8 @@
     "spec:diff": "node scripts/spec-diff.mjs",
     "spec:update": "node scripts/spec-extract.mjs && node scripts/build-catalog.mjs && node scripts/spec-diff.mjs",
     "smoke:live": "node scripts/live-smoke.mjs",
-    "measure": "node scripts/measure-tokens.mjs"
+    "measure": "node scripts/measure-tokens.mjs",
+    "spec:used": "npm run build --silent && node -e \"import('./dist/defaults.js').then(m => process.stdout.write(JSON.stringify({ ops: m.usedOps() }, null, 1) + '\\n'))\" > spec/used.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

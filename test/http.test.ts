@@ -143,7 +143,7 @@ describe('AroFloHttp', () => {
     const sleep = vi.fn(noSleep);
     const headers = { 'X-RateLimit-MinuteLimit-Remaining': '1', 'X-RateLimit-MinuteLimit-Reset': '12', 'X-RateLimit-DailyLimit-Remaining': '4321' };
     const f = fakeFetch({ 'GET /tasks': { body: { items: [] }, headers } });
-    const http = new AroFloHttp(testConfig(), f.fn, sleep);
+    const http = new AroFloHttp(testConfig(), f.fn, sleep, () => 1_000_000);
     await http.request('GET', '/tasks');
     expect(http.rate.dailyRemaining).toBe(4321);
     await http.request('GET', '/tasks');

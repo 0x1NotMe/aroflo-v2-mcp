@@ -17,6 +17,9 @@ describe('plainText', () => {
   it('leaves out-of-range numeric entities as they are', () => {
     expect(plainText('a &#1114112; b &#xD800; c')).toBe('a &#1114112; b &#xD800; c');
   });
+  it('turns typographic entities into ASCII', () => {
+    expect(plainText('I&rsquo;m &ldquo;here&rdquo; &ndash; ok&hellip;')).toBe('I\'m "here" - ok...');
+  });
   it('decodes numeric entities', () => {
     expect(plainText('Tom&#39;s &#x2013; ok')).toBe("Tom's – ok");
   });
@@ -63,6 +66,11 @@ describe('table', () => {
   it('writes the header once and puts id, jobNumber, name first', () => {
     expect(table(rows)).toBe('id\tjobNumber\tname\tstatus\tclient\nT1\t1001\tJob A\tIn Progress\tSmith\nT2\t1002\tJob B\tCompleted\tLee');
   });
+  it('says columns that are the same on every row once, above the table', () => {
+    const rows = [1, 2, 3].map((i) => ({ id: `L${i}`, item: `Item ${i}`, type: 'MATERIAL', uom: 'ea' }));
+    expect(table(rows)).toBe('same for all rows: type=MATERIAL, uom=ea\nid\titem\nL1\tItem 1\nL2\tItem 2\nL3\tItem 3');
+    expect(table(rows.slice(0, 2)).split('\n')[0]).toBe('id\titem\ttype\tuom');
+  });
   it('follows a requested column order and drops columns with no values', () => {
     expect(table(rows, { columns: ['status', 'empty', 'id'] }).split('\n')[0]).toBe('status\tid\tjobNumber\tname\tclient');
   });
@@ -81,7 +89,16 @@ describe('record', () => {
       ],
       note: null
     });
-    expect(out).toBe(['id: Q1', 'name: Front garden', 'client: Smith [C1]', 'counts.total: 1200.5', 'counts.tax: 109.14', 'takeoffs (2):', 'id\tname\nK1\tHARDSCAPES\nK2\tSOFTSCAPES'].join('\n'));
+    expect(out).toBe(['id: Q1', 'name: Front garden', 'client: Smith [C1]', 'counts: total=1200.5, tax=109.14', 'takeoffs (2):', 'id\tname\nK1\tHARDSCAPES\nK2\tSOFTSCAPES'].join('\n'));
+  });
+  it('collapses a big nested object such as a user to name and id, and drops avatar URLs', () => {
+    const user = { id: 'U1', givenName: 'Oli', familyName: 'S', email: 'o@x', phone: '1', mobile: '2', position: 'MD', isArchived: false, avatar: 'https://ui-avatars.example/x' };
+    expect(record({ estimatedByUser: user })).toBe('estimatedByUser: Oli S [U1]');
+  });
+  it('puts a small object of plain values on one line', () => {
+    expect(record({ acceptanceStatus: { status: 'ACCEPTED', actionedByType: 'MANUAL', actionedByUser: { givenName: 'Jan', familyName: 'W' }, expired: false } })).toBe(
+      'acceptanceStatus: status=ACCEPTED, actionedByType=MANUAL, actionedByUser=Jan W, expired=false'
+    );
   });
   it('keeps the extra fields of a small reference and cuts long labels', () => {
     expect(record({ taxCode: { id: 'X1', code: 'GST', rate: 10 } })).toBe('taxCode: GST [X1] rate=10');
