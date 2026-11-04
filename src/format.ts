@@ -4,7 +4,8 @@
 
 export type Obj = Record<string, unknown>;
 
-const DROP = new Set(['_links']);
+/** Keys that never help a model: hypermedia links and generated avatar image URLs. */
+const DROP = new Set(['_links', 'avatar']);
 const LABEL_KEYS = ['name', 'fullName', 'displayName', 'title', 'label', 'description', 'value', 'code'];
 const FIRST = ['id', 'jobNumber', 'number', 'name'];
 
@@ -33,7 +34,13 @@ export function clean(v: unknown): unknown {
   return v;
 }
 
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
+// Named entities seen in AroFlo notes. Typographic quotes and dashes become ASCII: same meaning, no extra tokens.
+const ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: "'", lsquo: "'", rdquo: '"', ldquo: '"', sbquo: "'", bdquo: '"',
+  ndash: '-', mdash: '-', hellip: '...', bull: '*', middot: '.', laquo: '"', raquo: '"', deg: '°', times: 'x', divide: '/',
+  frac12: '1/2', frac14: '1/4', frac34: '3/4', copy: '(c)', reg: '(R)', trade: '(TM)', eacute: 'é', egrave: 'è', agrave: 'à',
+  aacute: 'á', ccedil: 'ç', uuml: 'ü', ouml: 'ö', auml: 'ä', iacute: 'í', oacute: 'ó', uacute: 'ú', ntilde: 'ñ'
+};
 
 /** HTML to plain text (AroFlo notes are HTML), whitespace collapsed. */
 export function plainText(s: string): string {
@@ -128,8 +135,21 @@ export function table(rows: unknown[], opts: { columns?: string[]; maxCell?: num
     cols = orderColumns([...seen]);
   }
   if (!cols.length) return '';
-  const lines = [cols.join('\t')];
-  for (const r of clean_) lines.push(cols.map((c) => (c in r ? cell(r[c], opts.maxCell ?? 60) : '')).join('\t'));
+  const max = opts.maxCell ?? 60;
+  const rendered = clean_.map((r) => Object.fromEntries(cols.map((c) => [c, c in r ? cell(r[c], max) : ''])));
+  // Columns identical on every row (3+ rows) are said once above the table instead of on each row.
+  const same: string[] = [];
+  if (rendered.length >= 3) {
+    cols = cols.filter((c) => {
+      const v = rendered[0]![c]!;
+      if (v === '' || c === 'id' || !rendered.every((r) => r[c] === v)) return true;
+      same.push(`${c}=${v}`);
+      return false;
+    });
+  }
+  const lines = same.length ? [`same for all rows: ${same.join(', ')}`] : [];
+  lines.push(cols.join('\t'));
+  for (const r of rendered) lines.push(cols.map((c) => r[c]).join('\t'));
   return lines.join('\n');
 }
 
@@ -138,11 +158,14 @@ const NAME_PARTS = new Set(['givenName', 'givenNames', 'firstName', 'familyName'
 /** `label [id] k=v` for a small reference object; undefined when it is too big or nested to collapse. */
 function refText(o: Obj, max: number): string | undefined {
   const l = label(o);
-  if (l === undefined || typeof o.id !== 'string') return undefined;
+  if (l === undefined || (typeof o.id !== 'string' && typeof o.id !== 'number')) return undefined;
   const labelKey = LABEL_KEYS.find((k) => typeof o[k] === 'string' || typeof o[k] === 'number');
-  const rest = Object.entries(o).filter(([k]) => k !== 'id' && k !== labelKey && !NAME_PARTS.has(k));
-  if (rest.length > 4 || rest.some(([, v]) => isObj(v) || Array.isArray(v))) return undefined;
-  return `${cut(l, max, true)} [${o.id}]${rest.map(([k, v]) => ` ${k}=${scalar(v, 60)}`).join('')}`;
+  const rest = Object.entries(o).filter(([k]) => k !== 'id' && k !== labelKey && !NAME_PARTS.has(k) && !DROP.has(k));
+  const head = `${cut(l, max, true)} [${String(o.id)}]`;
+  // A small ref keeps its few extra facts (a tax code's rate); a big one (a whole user) collapses to
+  // name and id, and the model can read the record itself if it needs more.
+  if (rest.length <= 3 && rest.every(([, v]) => !isObj(v) && !Array.isArray(v))) return `${head}${rest.map(([k, v]) => ` ${k}=${scalar(v, 60)}`).join('')}`;
+  return head;
 }
 
 /** `key: value` lines for one record. Small nested refs become `label [id]`, others flatten one level. */
@@ -167,7 +190,13 @@ export function record(input: unknown, opts: { maxText?: number; maxRows?: numbe
         lines.push(`${k}: ${ref}`);
         continue;
       }
-      for (const [k2, v2] of Object.entries(v)) {
+      // A small object of plain values goes on one line: `k: a=1, b=2`.
+      const entries = Object.entries(v);
+      if (entries.length <= 8 && entries.every(([, x]) => !Array.isArray(x) && (!isObj(x) || refText(x, 80) !== undefined || label(x) !== undefined))) {
+        lines.push(`${k}: ${entries.map(([k2, x]) => `${k2}=${isObj(x) ? (label(x) ?? '') : scalar(x, 120)}`).join(', ')}`);
+        continue;
+      }
+      for (const [k2, v2] of entries) {
         const ref2 = isObj(v2) ? refText(v2, maxText) : undefined;
         if (ref2) lines.push(`${k}.${k2}: ${ref2}`);
         else if (isObj(v2) || Array.isArray(v2)) lines.push(`${k}.${k2}: ${cell(v2, 120)}`);

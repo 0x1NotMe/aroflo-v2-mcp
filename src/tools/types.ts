@@ -1,0 +1,56 @@
+import type { ApiCatalog } from '../catalog.js';
+import type { Config } from '../config.js';
+import type { SessionContext } from '../context.js';
+import type { AroFloHttp } from '../http.js';
+import type { JobIndex } from '../jobs.js';
+import { UsageError } from '../request.js';
+
+export interface Deps {
+  cfg: Config;
+  catalog: ApiCatalog;
+  http: AroFloHttp;
+  ctx: SessionContext;
+  jobs: JobIndex;
+}
+
+/** What tools/list sends. Keep descriptions and schemas short: every client pays for them on every turn. */
+export interface ToolDef {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, Record<string, unknown>>;
+    required?: string[];
+    additionalProperties?: false;
+  };
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
+}
+
+export interface Tool {
+  def: ToolDef;
+  run(args: Record<string, unknown>, deps: Deps): Promise<string>;
+}
+
+export function str(args: Record<string, unknown>, name: string): string {
+  const v = args[name];
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  if (typeof v !== 'string' || !v.trim()) throw new UsageError(`${name} is required.`);
+  return v.trim();
+}
+
+export function flag(args: Record<string, unknown>, name: string): boolean {
+  const v = args[name];
+  return v === true || v === 'true';
+}
+
+export function num(v: unknown): number {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+export const round = (n: number, places = 2) => Math.round(n * 10 ** places) / 10 ** places;

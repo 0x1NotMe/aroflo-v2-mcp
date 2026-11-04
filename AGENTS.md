@@ -6,13 +6,15 @@ Stdio MCP server for the AroFlo API v2 (`https://api.aroflo.com/v2`). The API is
 
 - `npm run check` runs typecheck and tests. Run it before every commit.
 - `npm run build` compiles to `dist/`, which is what MCP clients run.
-- `npm run spec:update` re-extracts the spec from docs.api.aroflo.com, rebuilds `spec/catalog.json` and prints the diff. Never hand-edit files in `spec/`.
+- `npm run spec:update` re-extracts the spec from docs.api.aroflo.com, rebuilds `spec/catalog.json` and prints the diff.
+- `npm run spec:used` regenerates `spec/used.json` from `src/defaults.ts`. Every file in `spec/` is generated: never hand-edit one.
 - `npm run smoke:live` makes read-only calls against live AroFlo. It needs `AROFLO_V2_API_KEY` and prints counts and field names only.
 - `npm run measure` prints token counts for tools/list and sample outputs.
 
 ## Layout
 
-- `src/tools/` has one file per MCP tool. `src/format.ts` renders compact output. `src/http.ts` is the API client.
+- `src/tools/` has one file per MCP tool. `src/format.ts` renders compact output. `src/http.ts` is the API client. `src/jobs.ts` finds tasks and quotes by job number.
+- `src/defaults.ts` holds the default columns and the fields the composite tools read. Tune output for a use case there first.
 - `spec/aroflo-v2.ops.json` is the extracted spec (AroFlo publishes none). `spec/catalog.json` is the runtime catalog built from it.
 - `spec/used.json` lists the operations and fields the code depends on. `test/spec-contract.test.ts` fails when AroFlo removes one, so the weekly spec PR shows what broke.
 
