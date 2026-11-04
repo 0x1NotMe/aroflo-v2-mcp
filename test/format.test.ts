@@ -14,6 +14,9 @@ describe('plainText', () => {
   it('leaves plain text alone apart from whitespace', () => {
     expect(plainText('  two   spaces\n')).toBe('two spaces');
   });
+  it('leaves out-of-range numeric entities as they are', () => {
+    expect(plainText('a &#1114112; b &#xD800; c')).toBe('a &#1114112; b &#xD800; c');
+  });
   it('decodes numeric entities', () => {
     expect(plainText('Tom&#39;s &#x2013; ok')).toBe("Tom's – ok");
   });
@@ -79,6 +82,13 @@ describe('record', () => {
       note: null
     });
     expect(out).toBe(['id: Q1', 'name: Front garden', 'client: Smith [C1]', 'counts.total: 1200.5', 'counts.tax: 109.14', 'takeoffs (2):', 'id\tname\nK1\tHARDSCAPES\nK2\tSOFTSCAPES'].join('\n'));
+  });
+  it('keeps the extra fields of a small reference and cuts long labels', () => {
+    expect(record({ taxCode: { id: 'X1', code: 'GST', rate: 10 } })).toBe('taxCode: GST [X1] rate=10');
+    expect(record({ client: { id: 'C1', name: 'n'.repeat(30) } }, { maxText: 5 })).toBe('client: nnnnn… [+25 chars] [C1]');
+  });
+  it('keeps real precision and drops float noise', () => {
+    expect(record({ a: 0.00001, b: 0.1 + 0.2, c: 1234.5678 })).toBe('a: 0.00001\nb: 0.3\nc: 1234.5678');
   });
   it('cuts long text with a marker', () => {
     expect(record({ description: 'x'.repeat(50) }, { maxText: 10 })).toBe(`description: ${'x'.repeat(10)}… [+40 chars]`);

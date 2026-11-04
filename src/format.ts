@@ -44,7 +44,8 @@ export function plainText(s: string): string {
   t = t.replace(/&(#x[0-9a-f]+|#\d+|[a-z0-9]+);/gi, (m, e: string) => {
     if (e[0] === '#') {
       const code = e[1]?.toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      const valid = Number.isInteger(code) && code >= 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+      return valid ? String.fromCodePoint(code) : m;
     }
     return ENTITIES[e.toLowerCase()] ?? m;
   });
@@ -85,7 +86,8 @@ export function label(o: Obj): string | undefined {
 
 function scalar(v: unknown, max: number, mark = false): string {
   if (typeof v === 'string') return cut(shortDate(plainText(v)), max, mark);
-  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : String(Math.round(v * 10000) / 10000);
+  // toPrecision(12) drops float noise (0.30000000000000004) without rounding real values away.
+  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(12)));
   if (typeof v === 'boolean') return String(v);
   return '';
 }
@@ -131,7 +133,17 @@ export function table(rows: unknown[], opts: { columns?: string[]; maxCell?: num
   return lines.join('\n');
 }
 
-const isRef = (o: Obj) => typeof o.id === 'string' && label(o) !== undefined && Object.keys(o).length <= 3;
+const NAME_PARTS = new Set(['givenName', 'givenNames', 'firstName', 'familyName', 'surname', 'lastName']);
+
+/** `label [id] k=v` for a small reference object; undefined when it is too big or nested to collapse. */
+function refText(o: Obj, max: number): string | undefined {
+  const l = label(o);
+  if (l === undefined || typeof o.id !== 'string') return undefined;
+  const labelKey = LABEL_KEYS.find((k) => typeof o[k] === 'string' || typeof o[k] === 'number');
+  const rest = Object.entries(o).filter(([k]) => k !== 'id' && k !== labelKey && !NAME_PARTS.has(k));
+  if (rest.length > 4 || rest.some(([, v]) => isObj(v) || Array.isArray(v))) return undefined;
+  return `${cut(l, max, true)} [${o.id}]${rest.map(([k, v]) => ` ${k}=${scalar(v, 60)}`).join('')}`;
+}
 
 /** `key: value` lines for one record. Small nested refs become `label [id]`, others flatten one level. */
 export function record(input: unknown, opts: { maxText?: number; maxRows?: number } = {}): string {
@@ -150,12 +162,14 @@ export function record(input: unknown, opts: { maxText?: number; maxRows?: numbe
         if (v.length > maxRows) lines.push(`… ${v.length - maxRows} more`);
       } else lines.push(`${k}: ${cut(v.map((x) => scalar(x, 80)).join(', '), maxText, true)}`);
     } else if (isObj(v)) {
-      if (isRef(v)) {
-        lines.push(`${k}: ${label(v)} [${v.id as string}]`);
+      const ref = refText(v, maxText);
+      if (ref) {
+        lines.push(`${k}: ${ref}`);
         continue;
       }
       for (const [k2, v2] of Object.entries(v)) {
-        if (isObj(v2) && isRef(v2)) lines.push(`${k}.${k2}: ${label(v2)} [${v2.id as string}]`);
+        const ref2 = isObj(v2) ? refText(v2, maxText) : undefined;
+        if (ref2) lines.push(`${k}.${k2}: ${ref2}`);
         else if (isObj(v2) || Array.isArray(v2)) lines.push(`${k}.${k2}: ${cell(v2, 120)}`);
         else lines.push(`${k}.${k2}: ${scalar(v2, maxText, true)}`);
       }

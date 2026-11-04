@@ -62,6 +62,13 @@ describe('fetchList', () => {
     expect(r.next).toEqual({ page: 2, limit: 25 });
   });
 
+  it('caps rows at 500 even on endpoints without paging', async () => {
+    const many = Array.from({ length: 700 }, (_, i) => ({ id: `M${i}` }));
+    const { http } = setup(() => ({ body: { items: many } }));
+    const r = await fetchList(http, catalog.get('GET /tasks/{taskId}/materials')!, '/tasks/T1/materials', {}, 1000);
+    expect(r.items).toHaveLength(500);
+  });
+
   it('makes one call for endpoints without paging', async () => {
     const { f, http } = setup(() => ({ body: { items: [{ id: 'M1' }, { id: 'M2' }, { id: 'M3' }] } }));
     const r = await fetchList(http, catalog.get('GET /tasks/{taskId}/materials')!, '/tasks/T1/materials', {}, 2);
