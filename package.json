@@ -1,0 +1,40 @@
+{
+  "name": "aroflo-v2-mcp",
+  "version": "0.1.0",
+  "description": "Token-lean, read-only-by-default MCP server for the AroFlo API v2",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "aroflo-v2-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "spec/catalog.json"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test",
+    "start": "node dist/index.js",
+    "spec:extract": "node scripts/spec-extract.mjs",
+    "spec:catalog": "node scripts/build-catalog.mjs",
+    "spec:diff": "node scripts/spec-diff.mjs",
+    "spec:update": "node scripts/spec-extract.mjs && node scripts/build-catalog.mjs && node scripts/spec-diff.mjs",
+    "smoke:live": "node scripts/live-smoke.mjs",
+    "measure": "node scripts/measure-tokens.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "gpt-tokenizer": "^4.1.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

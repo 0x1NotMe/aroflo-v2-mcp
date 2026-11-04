@@ -1,0 +1,62 @@
+[
+ {
+  "date": "2026-11-01",
+  "title": "API Release Notes - November 1, 2026",
+  "summary": "This release includes 9 breaking changes, 6 new endpoints, 7 updated endpoints, 12 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-11-01"
+ },
+ {
+  "date": "2026-10-25",
+  "title": "API Release Notes - October 25, 2026",
+  "summary": "This release includes 13 breaking changes, 2 new endpoints, 9 updated endpoints, 6 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-10-25"
+ },
+ {
+  "date": "2026-10-18",
+  "title": "API Release Notes - October 18, 2026",
+  "summary": "This release includes 20 breaking changes, 6 new endpoints, 22 updated endpoints, 29 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-10-18"
+ },
+ {
+  "date": "2026-10-11",
+  "title": "API Release Notes - October 11, 2026",
+  "summary": "This release includes 5 breaking changes, 5 new endpoints, 4 updated endpoints, 14 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-10-11"
+ },
+ {
+  "date": "2026-10-04",
+  "title": "API Release Notes - October 4, 2026",
+  "summary": "This release includes 3 breaking changes, 2 new endpoints, 4 updated endpoints, 6 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-10-04"
+ },
+ {
+  "date": "2026-09-27",
+  "title": "API Release Notes - September 27, 2026",
+  "summary": "This release includes 1 breaking change, 5 new endpoints, 4 updated endpoints, 5 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-09-27"
+ },
+ {
+  "date": "2026-09-20",
+  "title": "API Release Notes - September 20, 2026",
+  "summary": "This release includes 1 new endpoint, 1 updated endpoint.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-09-20"
+ },
+ {
+  "date": "2026-09-13",
+  "title": "API Release Notes - September 13, 2026",
+  "summary": "This release includes 6 breaking changes, 2 new endpoints, 6 updated endpoints, 8 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-09-13"
+ },
+ {
+  "date": "2026-09-06",
+  "title": "API Release Notes - September 6, 2026",
+  "summary": "This release includes 2 updated endpoints, 3 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-09-06"
+ },
+ {
+  "date": "2026-09-01",
+  "title": "API Release Notes - September 1, 2026",
+  "summary": "This release includes 4 breaking changes, 3 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-09-01"
+ }
+]
