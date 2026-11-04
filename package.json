@@ -12,7 +12,7 @@
     "spec/catalog.json"
   ],
   "engines": {
-    "node": ">=20.10"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
