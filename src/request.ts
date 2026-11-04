@@ -1,4 +1,5 @@
 import type { ApiCatalog, Method, Op, Param } from './catalog.js';
+import { cut } from './format.js';
 
 /** A mistake the model can fix from the message alone. No API call was made. */
 export class UsageError extends Error {}
@@ -34,13 +35,14 @@ export async function resolveTarget(catalog: ApiCatalog, method: Method, input: 
   const { path, search } = splitPath(input);
   const match = catalog.match(method, path);
   if (!match) {
+    const shown = cut(path, 200);
     const others = catalog.methodsFor(path);
-    if (others.length) throw new UsageError(`${method} is not available on ${path}; it supports ${others.join(', ')}.`);
+    if (others.length) throw new UsageError(`${method} is not available on ${shown}; it supports ${others.join(', ')}.`);
     const close = catalog
       .search(path.replace(/[{}]/g, ' '), { methods: [method], limit: 5 })
       .map((o) => o.p)
       .join(', ');
-    throw new UsageError(`No ${method} endpoint matches ${path}.${close ? ` Close: ${close}.` : ''} aroflo_api lists them.`);
+    throw new UsageError(`No ${method} endpoint matches ${shown}.${close ? ` Close: ${close}.` : ''} aroflo_api lists them.`);
   }
   let concrete = match.op.p;
   const params: Record<string, string> = {};
@@ -48,9 +50,9 @@ export async function resolveTarget(catalog: ApiCatalog, method: Method, input: 
     let value = match.params[name] ?? '';
     // Ids are opaque tokens. "..", "." or a decoded slash would let URL normalisation send the request
     // to a different endpoint than the one validated (and, for writes, allowlisted).
-    if (/^\.{1,2}$/.test(value) || /[/\\\u0000-\u001f\u007f]/.test(value)) throw new UsageError(`Invalid ${name}: "${value}".`);
+    if (/^\.{1,2}$/.test(value) || /[/\\\u0000-\u001f\u007f]/.test(value)) throw new UsageError(`Invalid ${name}: "${cut(value, 80)}".`);
     if (PLACEHOLDER.test(value)) {
-      if (!BU_NAMES.has(name)) throw new UsageError(`${match.op.p} needs a real ${name}, not ${value}.`);
+      if (!BU_NAMES.has(name)) throw new UsageError(`${match.op.p} needs a real ${name}, not ${cut(value, 80)}.`);
       value = await bu.businessUnitId();
     }
     params[name] = value;

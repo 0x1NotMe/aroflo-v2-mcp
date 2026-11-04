@@ -58,6 +58,10 @@ const routes: Record<string, (call: Call) => Reply> = {
   'PATCH /clients/C1': (call) => ({ body: { id: 'C1', name: 'Smith, Jo', individual: (call.body as { individual?: boolean }).individual } }),
   'POST /tasks/T50/notes/bulk': () => ({ status: 207, body: { items: [{ index: 0, status: 201, id: 'N1' }, { index: 1, status: 400, error: 'content required' }] } }),
   'POST /tasks/T51/notes/bulk': () => ({ status: 207, body: { items: [...Array.from({ length: 30 }, (_, i) => ({ index: i, status: 201, id: `N${i}` })), { index: 30, status: 400, error: 'too long' }] } }),
+  'POST /tasks/T52/notes/bulk': () => ({
+    status: 207,
+    body: { items: Array.from({ length: 40 }, (_, i) => ({ id: `N${i}` })), errors: [{ itemIndex: 41, error: { statusCode: 400, message: 'Invalid filter provided' }, originalData: { content: 'x'.repeat(5000) } }] }
+  }),
   'GET /tasks/T70': () => ({ body: { id: 'T70', big: { nested: { blob: 'x'.repeat(200_000) } } } })
 };
 
@@ -124,10 +128,17 @@ describe('aroflo_get', () => {
     expect(r.text.split('\n')).toHaveLength(4);
   });
 
+  it('keeps errors short too, even for an absurd path', async () => {
+    const { call } = setup();
+    const r = await call('aroflo_get', { path: `/${'x'.repeat(200_000)}` });
+    expect(r.isError).toBe(true);
+    expect(r.text.length).toBeLessThan(600);
+  });
+
   it('cuts any result at the hard ceiling, full=true included', async () => {
     const { call } = setup();
     const r = await call('aroflo_get', { path: '/tasks/T70', full: true });
-    expect(r.text.length).toBeLessThan(61_000);
+    expect(r.text.length).toBeLessThanOrEqual(60_000);
     expect(r.text).toMatch(/\[output cut at 60000 chars of \d+; narrow it/);
   });
 
@@ -297,6 +308,15 @@ describe('aroflo_write (code mode: client without confirm dialogs)', () => {
     const r = await call('aroflo_write', { ...args, confirm: codeIn((await call('aroflo_write', args)).text) });
     expect(r.text).toMatch(/-> 207/);
     expect(r.text).toContain('207: 1 of 2 items failed; the other 1 succeeded.');
+  });
+
+  it("reads AroFlo's documented 207 shape: errors[] next to items[]", async () => {
+    const { call } = writable();
+    const args = { method: 'POST', path: '/tasks/T52/notes/bulk', body: { taskNotes: [{ content: 'a', filter: 'INTERNAL_ONLY' }] } };
+    const r = await call('aroflo_write', { ...args, confirm: codeIn((await call('aroflo_write', args)).text) });
+    expect(r.text).toContain('207: 1 item failed, 40 succeeded.');
+    expect(r.text).toContain('item 41: 400 Invalid filter provided');
+    expect(r.text).not.toContain('xxxxx');
   });
 
   it('names a 207 failure even when it comes after many successes', async () => {

@@ -114,13 +114,29 @@ async function send(p: Prepared, d: Deps): Promise<string> {
   }
 }
 
-/** A 207 names every failed item (never cut) and counts the rest, so nothing is resent or lost. */
+/**
+ * A 207 names every failed item and counts the successes, so nothing is resent or lost. AroFlo's
+ * documented shape is {items: [created], errors: [{itemIndex (1-based), error: {statusCode, message}}]};
+ * a per-item status list is handled too. originalData is left out: it only echoes what was sent.
+ */
 export function multiStatus(data: unknown): string {
+  const ok = isObj(data) && Array.isArray(data.items) ? data.items.length : undefined;
+  if (isObj(data) && Array.isArray(data.errors)) {
+    const errs = data.errors.filter(isObj);
+    const lines = errs.map((e) => {
+      const err = isObj(e.error) ? e.error : {};
+      const status = typeof err.statusCode === 'number' ? `${err.statusCode} ` : '';
+      const msg = typeof err.message === 'string' ? err.message : typeof e.error === 'string' ? e.error : JSON.stringify(e.error ?? e);
+      return `item ${String(e.itemIndex ?? '?')}: ${status}${msg}`;
+    });
+    const head = `207: ${errs.length} item${errs.length === 1 ? '' : 's'} failed${ok !== undefined ? `, ${ok} succeeded` : ''}. Do not resend the ones that succeeded.`;
+    return lines.length ? `${head}\n${lines.join('\n')}` : head;
+  }
   const rows = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.items) ? data.items : [];
   const failed = rows.filter((r) => isObj(r) && ((typeof r.status === 'number' && r.status >= 400) || r.error !== undefined || r.success === false));
-  if (!rows.length) return `207: partial success; AroFlo returned no item list.\n${render(data, { maxText: 300, maxCell: 80, maxRows: 1000 })}`;
+  if (!rows.length) return `207: partial success, but AroFlo returned no item list:\n${render(data, { maxText: 300, maxCell: 80 })}`;
   const head = `207: ${failed.length} of ${rows.length} items failed; the other ${rows.length - failed.length} succeeded. Do not resend the ones that succeeded.`;
-  return failed.length ? `${head}\nfailed:\n${render(failed, { maxText: 300, maxCell: 120, maxRows: 1000 })}` : head;
+  return failed.length ? `${head}\n${failed.map((f) => `item ${JSON.stringify(f)}`).join('\n')}` : head;
 }
 
 const baseSchema = {

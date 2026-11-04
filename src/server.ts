@@ -27,6 +27,13 @@ export function toolsFor(cfg: Config, writeMode: 'dialog' | 'code' = 'code'): To
   return tools;
 }
 
+/** Cut a result to MAX_OUTPUT_CHARS in total, marker included. */
+export function ceiling(text: string): string {
+  if (text.length <= MAX_OUTPUT_CHARS) return text;
+  const marker = `\n… [output cut at ${MAX_OUTPUT_CHARS} chars of ${text.length}; narrow it with _fields, limit or a filter]`;
+  return text.slice(0, MAX_OUTPUT_CHARS - marker.length) + marker;
+}
+
 export function errorText(err: unknown, cfg: Config): string {
   const msg = err instanceof UsageError || err instanceof ApiError ? err.message : `Internal error: ${err instanceof Error ? err.message : String(err)}`;
   return cfg.token ? msg.split(cfg.token).join('[token]') : msg;
@@ -37,12 +44,11 @@ export async function callTool(tools: Tool[], name: string, args: Record<string,
   if (!tool) return { text: `Unknown tool ${name}. Tools: ${tools.map((t) => t.def.name).join(', ')}.`, isError: true };
   try {
     let text = await tool.run(args, deps);
-    if (text.length > MAX_OUTPUT_CHARS) text = `${text.slice(0, MAX_OUTPUT_CHARS)}\n… [output cut at ${MAX_OUTPUT_CHARS} chars of ${text.length}; narrow it with _fields, limit or a filter]`;
     const left = deps.http.rate.dailyRemaining;
     if (left !== undefined && left < BUDGET_WARN) text += `\n[AroFlo calls left today: ${left}]`;
-    return { text, isError: false };
+    return { text: ceiling(text), isError: false };
   } catch (err) {
-    return { text: errorText(err, deps.cfg), isError: true };
+    return { text: ceiling(errorText(err, deps.cfg)), isError: true };
   }
 }
 
