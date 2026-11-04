@@ -1,13 +1,20 @@
 import { JOB_FIELDS, JOB_LABOUR_FIELDS, JOB_MATERIAL_FIELDS } from '../defaults.js';
 import { cut, isObj, label, plainText, record, shortDate, table, type Obj } from '../format.js';
+import { ApiError } from '../http.js';
 import { fetchList } from '../list.js';
 import { num, round, str, type Tool } from './types.js';
 
 const MAX_NOTES = 5;
+const MAX_MATERIALS = 25;
 
 export function itemsOf(data: unknown): Obj[] {
   const rows = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.items) ? data.items : isObj(data) ? [data] : [];
   return rows.filter(isObj);
+}
+
+/** A rejected token stops the whole composite: no further calls on a revoked or rotated token. */
+export function rethrowAuth(results: PromiseSettledResult<unknown>[]): void {
+  for (const r of results) if (r.status === 'rejected' && r.reason instanceof ApiError && r.reason.status === 401) throw r.reason;
 }
 
 export function failure(what: string, r: PromiseSettledResult<unknown>): string | undefined {
@@ -31,7 +38,7 @@ function hoursBy(rows: Obj[], key: string): string {
 export const jobTool: Tool = {
   def: {
     name: 'aroflo_job',
-    description: 'One job (task) in one call: details, labour hours by person and work type, materials and latest notes. job = job number or task id.',
+    description: 'One job (task) in one call: details, schedule and assigned staff, labour hours by person and work type, materials, latest notes. job = job number or task id.',
     inputSchema: { type: 'object', properties: { job: { type: 'string' } }, required: ['job'], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: true }
   },
@@ -47,6 +54,7 @@ export const jobTool: Tool = {
       d.http.request('GET', `/tasks/${id}/notes`, { query: { _fields: 'note,timestampCreated' }, template: 'GET /tasks/{task_id}/notes' })
     ]);
 
+    rethrowAuth([labour, materials, notes]);
     const out = [record(task.data, { maxText: 400 })];
 
     if (labour.status === 'fulfilled') {
@@ -64,7 +72,8 @@ export const jobTool: Tool = {
 
     if (materials.status === 'fulfilled') {
       const rows = itemsOf(materials.value.data);
-      out.push(rows.length ? `materials (${rows.length}):\n${table(rows, { maxCell: 50 })}` : 'materials: none');
+      const more = rows.length > MAX_MATERIALS ? `, first ${MAX_MATERIALS}; all: aroflo_get /tasks/${ref.id}/materials?limit=${rows.length}` : '';
+      out.push(rows.length ? `materials (${rows.length}${more}):\n${table(rows.slice(0, MAX_MATERIALS), { maxCell: 50 })}` : 'materials: none');
     } else out.push(failure('materials', materials)!);
 
     if (notes.status === 'fulfilled') {

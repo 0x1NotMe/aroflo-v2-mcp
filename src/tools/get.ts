@@ -66,6 +66,6 @@ export const getTool: Tool = {
       return body ? `${listHeader(r)}\n${body}` : listHeader(r);
     }
     const res = await d.http.request('GET', target.path, { query, collection: op.pp.length === 0, template: op.k });
-    return render(res.data, { maxText: full ? 100_000 : 600, maxCell }) || '(empty response)';
+    return render(res.data, { maxText: full ? 100_000 : 600, maxCell, full }) || '(empty response)';
   }
 };

@@ -8,7 +8,7 @@ Stdio MCP server for the AroFlo API v2 (`https://api.aroflo.com/v2`). The API is
 - `npm run build` compiles to `dist/`, which is what MCP clients run.
 - `npm run spec:update` re-extracts the spec from docs.api.aroflo.com, rebuilds `spec/catalog.json` and prints the diff.
 - `npm run spec:used` regenerates `spec/used.json` from `src/defaults.ts`. Every file in `spec/` is generated: never hand-edit one.
-- `npm run smoke:live` makes read-only calls against live AroFlo. It needs `AROFLO_V2_API_KEY` and prints counts and field names only.
+- `npm run smoke:live` runs the tools read-only against live AroFlo (needs `AROFLO_V2_API_KEY`) and prints tokens, calls and the first line of each result. `--show` prints full results: real data, keep it out of the repo.
 - `npm run measure` prints token counts for tools/list and sample outputs.
 
 ## Layout

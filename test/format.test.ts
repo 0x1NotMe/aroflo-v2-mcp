@@ -71,6 +71,10 @@ describe('table', () => {
     expect(table(rows)).toBe('same for all rows: type=MATERIAL, uom=ea\nid\titem\nL1\tItem 1\nL2\tItem 2\nL3\tItem 3');
     expect(table(rows.slice(0, 2)).split('\n')[0]).toBe('id\titem\ttype\tuom');
   });
+  it('does not hoist columns whose values differ but render the same', () => {
+    const rows = [1, 2, 3].map((i) => ({ id: `L${i}`, note: `${'same prefix '.repeat(10)}${i}`, client: { id: `C${i}`, name: 'Smith' } }));
+    expect(table(rows).startsWith('same for all rows')).toBe(false);
+  });
   it('follows a requested column order and drops columns with no values', () => {
     expect(table(rows, { columns: ['status', 'empty', 'id'] }).split('\n')[0]).toBe('status\tid\tjobNumber\tname\tclient');
   });
@@ -94,6 +98,11 @@ describe('record', () => {
   it('collapses a big nested object such as a user to name and id, and drops avatar URLs', () => {
     const user = { id: 'U1', givenName: 'Oli', familyName: 'S', email: 'o@x', phone: '1', mobile: '2', position: 'MD', isArchived: false, avatar: 'https://ui-avatars.example/x' };
     expect(record({ estimatedByUser: user })).toBe('estimatedByUser: Oli S [U1]');
+  });
+  it('full=true keeps every field and id of nested objects', () => {
+    const user = { id: 'U1', givenName: 'Oli', familyName: 'S', email: 'o@x', phone: '1', mobile: '2', position: 'MD' };
+    expect(record({ estimatedByUser: user }, { full: true })).toBe('estimatedByUser: Oli S [U1] email=o@x phone=1 mobile=2 position=MD');
+    expect(record({ status: { actionedByUser: { id: 'U2', name: 'Jan' }, status: 'ACCEPTED' } })).toBe('status: actionedByUser=Jan [U2], status=ACCEPTED');
   });
   it('puts a small object of plain values on one line', () => {
     expect(record({ acceptanceStatus: { status: 'ACCEPTED', actionedByType: 'MANUAL', actionedByUser: { givenName: 'Jan', familyName: 'W' }, expired: false } })).toBe(

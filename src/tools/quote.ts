@@ -1,11 +1,13 @@
 import { QUOTE_HEADER_FIELDS, QUOTE_LINE_FIELDS } from '../defaults.js';
 import { isObj, record, table, type Obj } from '../format.js';
 import { fetchList } from '../list.js';
-import { failure } from './job.js';
+import { failure, rethrowAuth } from './job.js';
 import { flag, str, type Tool } from './types.js';
 
 /** The money-related keys of a quote's `counts` (the rest are checklist and form tallies). */
 const MONEY = ['total', 'tax', 'taxInclusive', 'labour', 'materials', 'markup', 'labourMarkup', 'materialMarkup'];
+/** lines=true fetches one section at a time; past this many sections, point at aroflo_get instead. */
+const MAX_SECTIONS = 30;
 
 function lineRow(l: Obj, nested: boolean): Obj {
   const child = l.parentId !== null && l.parentId !== undefined;
@@ -39,7 +41,8 @@ export const quoteTool: Tool = {
     const id = encodeURIComponent(ref.id);
     const lineOp = d.catalog.get('GET /quotes/{quoteId}/lineitems')!;
     const header = await d.http.request('GET', `/quotes/${id}`, { query: { _fields: QUOTE_HEADER_FIELDS }, template: 'GET /quotes/{quoteId}' });
-    const [takeoffs] = await Promise.allSettled([fetchList(d.http, d.catalog.get('GET /quotes/{quoteId}/takeoffs')!, `/quotes/${id}/takeoffs`, {}, 100)]);
+    const [takeoffs] = await Promise.allSettled([fetchList(d.http, d.catalog.get('GET /quotes/{quoteId}/takeoffs')!, `/quotes/${id}/takeoffs`, {}, 500)]);
+    rethrowAuth([takeoffs]);
 
     const h: Obj = isObj(header.data) ? { ...header.data } : {};
     const counts = isObj(h.counts) ? h.counts : undefined;
@@ -60,15 +63,16 @@ export const quoteTool: Tool = {
           }))
         : [];
     if (takeoffs.status === 'rejected') out.push(failure('sections', takeoffs)!);
-    else if (sections.length) out.push(`sections (${sections.length}):\n${table(sections)}`);
+    else if (sections.length) out.push(`sections (${sections.length}${takeoffs.value.next ? '+' : ''}):\n${table(sections)}`);
 
     const path = `/quotes/${id}/lineitems`;
     if (flag(args, 'lines') && sections.length) {
-      for (const s of sections) {
+      for (const s of sections.slice(0, MAX_SECTIONS)) {
         const r = await fetchList(d.http, lineOp, path, { takeoffId: String(s.id), _fields: QUOTE_LINE_FIELDS }, 500);
         const rows = r.items.filter(isObj).map((l) => lineRow(l, true));
         out.push(`## ${String(s.name)} (${rows.length}${r.next ? '+' : ''} lines)`, table(rows, { maxCell: 50 }));
       }
+      if (sections.length > MAX_SECTIONS) out.push(`… ${sections.length - MAX_SECTIONS} more sections: aroflo_get /quotes/${ref.id}/lineitems?takeoffId=<section id>`);
       return out.join('\n');
     }
 

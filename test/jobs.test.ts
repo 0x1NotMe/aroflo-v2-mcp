@@ -40,6 +40,24 @@ describe('JobIndex', () => {
     expect(f.calls.length - before).toBeLessThanOrEqual(18);
   });
 
+  it('finds a job in a sorted list with heavily skewed numbering', async () => {
+    // 100 pages: job numbers 1..9900 except the last page, which jumps to millions.
+    const tasks = Array.from({ length: 10_000 }, (_, i) => ({ id: `T${i}`, jobNumber: i < 9_900 ? i + 1 : 5_000_000 + i }));
+    const f = fakeFetch({ 'GET /tasks': pagedList(tasks) });
+    const jobs = new JobIndex(new AroFloHttp(testConfig(), f.fn, noSleep));
+    expect((await jobs.find('tasks', 5000))?.id).toBe('T4999');
+    expect(f.calls.length).toBeLessThanOrEqual(12);
+  });
+
+  it('finds a job created after its page was cached', async () => {
+    const tasks = Array.from({ length: 250 }, (_, i) => ({ id: `T${i}`, jobNumber: 1000 + i }));
+    const f = fakeFetch({ 'GET /tasks': pagedList(tasks) });
+    const jobs = new JobIndex(new AroFloHttp(testConfig(), f.fn, noSleep));
+    expect(await jobs.find('tasks', 1250)).toBeUndefined();
+    tasks.push({ id: 'T250', jobNumber: 1250 });
+    expect((await jobs.find('tasks', 1250))?.id).toBe('T250');
+  });
+
   it('reuses rows it has seen', async () => {
     const { f, jobs, tasks } = setup();
     await jobs.find('tasks', tasks[4321]!.jobNumber);

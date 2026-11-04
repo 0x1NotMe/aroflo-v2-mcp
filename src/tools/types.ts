@@ -11,6 +11,8 @@ export interface Deps {
   http: AroFloHttp;
   ctx: SessionContext;
   jobs: JobIndex;
+  /** Ask the user to approve, outside the model (MCP elicitation). Present only when the client supports it. */
+  askUser?: (message: string) => Promise<boolean>;
 }
 
 /** What tools/list sends. Keep descriptions and schemas short: every client pays for them on every turn. */
@@ -43,9 +45,15 @@ export function str(args: Record<string, unknown>, name: string): string {
   return v.trim();
 }
 
+/** Optional boolean argument. Accepts true/false, 1/0, yes/no (any case); anything else is an error, not a silent false. */
 export function flag(args: Record<string, unknown>, name: string): boolean {
   const v = args[name];
-  return v === true || v === 'true';
+  if (v === undefined || v === null) return false;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  if (['true', '1', 'yes'].includes(s)) return true;
+  if (['false', '0', 'no', ''].includes(s)) return false;
+  throw new UsageError(`${name} must be true or false.`);
 }
 
 export function num(v: unknown): number {

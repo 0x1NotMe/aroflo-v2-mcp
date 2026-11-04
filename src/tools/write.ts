@@ -1,14 +1,14 @@
-import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import _Ajv2020 from 'ajv/dist/2020.js';
 import type { ErrorObject, ValidateFunction } from 'ajv';
 import { audit, idsIn } from '../audit.js';
 import type { Method, Op } from '../catalog.js';
 import type { Config } from '../config.js';
-import { cut, isObj, render } from '../format.js';
+import { isObj, render } from '../format.js';
 import { ApiError } from '../http.js';
 import { buildQuery, resolveTarget, UsageError } from '../request.js';
 import { writeAllowed } from '../writes.js';
-import { str, type Tool } from './types.js';
+import { type Deps, str, type Tool, type ToolDef } from './types.js';
 
 // ajv is CommonJS: under NodeNext the default import is module.exports, whose `.default` is the class.
 const Ajv2020 = _Ajv2020.default;
@@ -17,9 +17,11 @@ const validators = new Map<string, ValidateFunction>();
 
 const WRITE_METHODS = new Set<Method>(['POST', 'PATCH', 'PUT', 'DELETE']);
 const TTL_MS = 10 * 60_000;
-/** Per-process secret: the model cannot mint a confirm code without asking for a preview. */
-const SALT = randomBytes(32);
-const issued = new Map<string, number>();
+/** Opaque AroFlo ids only in write paths, so a path (and the audit log) never carries free text. */
+const OPAQUE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** Confirm codes: random per preview, bound to the request digest, single use. */
+const issued = new Map<string, { digest: string; at: number }>();
+const digestOf = (s: string) => createHash('sha256').update(s).digest('hex');
 
 export function canonical(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
@@ -39,8 +41,8 @@ function validate(op: Op, body: unknown): string[] {
   return (fn.errors ?? []).slice(0, 8).map((e: ErrorObject) => {
     const where = e.instancePath ? `body${e.instancePath.replace(/\//g, '.')}` : 'body';
     if (e.keyword === 'unevaluatedProperties' || e.keyword === 'additionalProperties') {
-      const extra = (e.params as { unevaluatedProperty?: string; additionalProperty?: string }).unevaluatedProperty ?? (e.params as { additionalProperty?: string }).additionalProperty;
-      return `${where} has an undocumented field "${extra}" (AroFlo ignores those; check aroflo_api)`;
+      const p = e.params as { unevaluatedProperty?: string; additionalProperty?: string };
+      return `${where} has an undocumented field "${p.unevaluatedProperty ?? p.additionalProperty}" (AroFlo ignores those; check aroflo_api)`;
     }
     if (e.keyword === 'enum') return `${where} must be one of ${((e.params as { allowedValues?: unknown[] }).allowedValues ?? []).join(', ')}`;
     return `${where} ${e.message ?? 'is invalid'}`;
@@ -59,72 +61,118 @@ function parseBody(raw: unknown): unknown {
   return raw;
 }
 
-export function makeWriteTool(cfg: Config): Tool {
-  return {
-    def: {
-      name: 'aroflo_write',
-      description: `Create or change AroFlo records (enabled: ${cfg.writeOps.join(', ')}). First call without confirm returns a preview and a code: show the preview to the user. Only after they agree, call again with identical arguments plus confirm=<code>. Writes are permanent; aroflo_api 'POST /path' shows the body fields.`,
-      inputSchema: {
-        type: 'object',
-        properties: {
-          method: { type: 'string', enum: ['POST', 'PATCH', 'PUT', 'DELETE'] },
-          path: { type: 'string' },
-          body: { type: 'object' },
-          confirm: { type: 'string' }
-        },
-        required: ['method', 'path'],
-        additionalProperties: false
-      },
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
-    },
+interface Prepared {
+  method: Method;
+  op: Op;
+  path: string;
+  query: Record<string, string>;
+  body: unknown;
+}
 
+/** Everything that can be checked without AroFlo: method, path, allowlist, query, body schema. */
+async function prepare(args: Record<string, unknown>, d: Deps): Promise<Prepared> {
+  const method = str(args, 'method').toUpperCase() as Method;
+  if (!WRITE_METHODS.has(method)) throw new UsageError('method must be POST, PATCH, PUT or DELETE. Use aroflo_get to read.');
+  const target = await resolveTarget(d.catalog, method, str(args, 'path'), d.ctx);
+  const { op } = target;
+  if (!writeAllowed(d.cfg, op)) throw new UsageError(`${op.k} is not enabled on this server. Enabled: ${d.cfg.writeOps.join(', ')}.`);
+  for (const [name, value] of Object.entries(target.params)) {
+    if (!OPAQUE_ID.test(value)) throw new UsageError(`${name} must be an AroFlo id (letters, digits, - or _).`);
+  }
+  const query = await buildQuery(op, target.search, d.ctx);
+  const body = parseBody(args.body);
+  if (body === undefined && (op.br || (op.b && method !== 'DELETE'))) throw new UsageError(`${op.k} needs a body. aroflo_api '${op.k}' lists its fields.`);
+  if (body !== undefined && !op.b && !op.bin) throw new UsageError(`${op.k} takes no body.`);
+  if (body !== undefined && op.b) {
+    const problems = validate(op, body);
+    if (problems.length) throw new UsageError(`Body rejected before sending:\n${problems.join('\n')}`);
+  }
+  return { method, op, path: target.path, query, body };
+}
+
+/** The whole request, never cut: this is what the user approves. */
+function describeRequest(p: Prepared, pretty: boolean): string {
+  const q = Object.keys(p.query).length ? `?${new URLSearchParams(p.query).toString()}` : '';
+  const body = p.body === undefined ? 'body: none' : `body: ${pretty ? JSON.stringify(p.body, null, 2) : JSON.stringify(p.body)}`;
+  return `${p.method} ${p.path}${q}\n${body}\n${p.method === 'DELETE' ? 'This deletes the record.' : 'AroFlo has no undo for this.'}`;
+}
+
+async function send(p: Prepared, d: Deps): Promise<string> {
+  const bodySha256 = p.body === undefined ? undefined : createHash('sha256').update(canonical(p.body)).digest('hex');
+  try {
+    const res = await d.http.request(p.method, p.path, { query: p.query, body: p.body, confirmedWrite: true, template: p.op.k });
+    const warn = audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: p.op.k, path: p.path, status: res.status, outcome: 'ok', bodySha256, ids: idsIn(res.data) });
+    const detail = res.data === undefined ? '' : `\n${render(res.data, { maxText: 300, maxCell: 50 })}`;
+    const partial = res.status === 207 ? '\n207: some items failed; the rows above say which. Do not resend the ones that succeeded.' : '';
+    return `sent: ${p.op.k} -> ${res.status}${detail}${partial}${warn ? `\n(${warn})` : ''}`;
+  } catch (err) {
+    const outcome = err instanceof ApiError && err.outcome === 'unknown' ? 'unknown' : 'failed';
+    audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: p.op.k, path: p.path, status: err instanceof ApiError ? err.status : 0, outcome, bodySha256 });
+    throw err;
+  }
+}
+
+const baseSchema = {
+  method: { type: 'string', enum: ['POST', 'PATCH', 'PUT', 'DELETE'] },
+  path: { type: 'string' },
+  body: { type: 'object' }
+};
+
+/**
+ * Two ways to get the user's OK, chosen per client at connect time:
+ * - dialog: the client supports MCP elicitation (Codex does). One call; the server asks the user
+ *   directly in a confirm dialog showing the exact request. The model cannot answer it.
+ * - code: no elicitation. The first call returns the full request and a single-use code; the model
+ *   must show it and pass the code back. The client's own tool-approval prompt is the human gate
+ *   here, so it must stay on for aroflo_write.
+ */
+export function makeWriteTool(cfg: Config, mode: 'dialog' | 'code'): Tool {
+  const enabled = cfg.writeOps.join(', ');
+  const def: ToolDef =
+    mode === 'dialog'
+      ? {
+          name: 'aroflo_write',
+          description: `Create or change AroFlo records (enabled: ${enabled}). Each call opens a confirm dialog showing the exact request; nothing is sent unless the user accepts. Writes are permanent. aroflo_api 'POST /path' shows the body fields.`,
+          inputSchema: { type: 'object', properties: baseSchema, required: ['method', 'path'], additionalProperties: false },
+          annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
+        }
+      : {
+          name: 'aroflo_write',
+          description: `Create or change AroFlo records (enabled: ${enabled}). First call returns a preview and a code: show the preview to the user, and only after they agree call again with identical arguments plus confirm=<code>. Writes are permanent. aroflo_api 'POST /path' shows the body fields.`,
+          inputSchema: { type: 'object', properties: { ...baseSchema, confirm: { type: 'string' } }, required: ['method', 'path'], additionalProperties: false },
+          annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
+        };
+
+  return {
+    def,
     async run(args, d) {
-      const method = str(args, 'method').toUpperCase() as Method;
-      if (!WRITE_METHODS.has(method)) throw new UsageError('method must be POST, PATCH, PUT or DELETE. Use aroflo_get to read.');
-      const target = await resolveTarget(d.catalog, method, str(args, 'path'), d.ctx);
-      const { op } = target;
-      if (!writeAllowed(d.cfg, op)) throw new UsageError(`${op.k} is not enabled on this server. Enabled: ${d.cfg.writeOps.join(', ')}.`);
-      const query = await buildQuery(op, target.search, d.ctx);
-      const body = parseBody(args.body);
-      if (body === undefined && (op.br || (op.b && method !== 'DELETE'))) throw new UsageError(`${op.k} needs a body. aroflo_api '${op.k}' lists its fields.`);
-      if (body !== undefined && !op.b && !op.bin) throw new UsageError(`${op.k} takes no body.`);
-      if (body !== undefined && op.b) {
-        const problems = validate(op, body);
-        if (problems.length) throw new UsageError(`Body rejected before sending:\n${problems.join('\n')}`);
+      const p = await prepare(args, d);
+
+      if (mode === 'dialog') {
+        if (!d.askUser) throw new UsageError('This client cannot show a confirm dialog; reconnect the MCP server.');
+        let ok: boolean;
+        try {
+          ok = await d.askUser(`Send this to AroFlo?\n\n${describeRequest(p, true)}`);
+        } catch (err) {
+          return `Not sent: the confirm dialog failed (${err instanceof Error ? err.message : String(err)}).`;
+        }
+        return ok ? send(p, d) : 'Not sent: the user declined.';
       }
 
-      const request = `${method} ${target.path}?${canonical(query)}\n${canonical(body)}`;
-      const code = createHmac('sha256', SALT).update(request).digest('hex').slice(0, 10);
+      const digest = digestOf(`${p.method} ${p.path}?${canonical(p.query)}\n${canonical(p.body)}`);
       const now = Date.now();
-      for (const [c, at] of issued) if (now - at > TTL_MS) issued.delete(c);
-
+      for (const [c, e] of issued) if (now - e.at > TTL_MS) issued.delete(c);
       const confirm = typeof args.confirm === 'string' ? args.confirm.trim() : '';
       if (!confirm) {
-        issued.set(code, now);
-        const shownQuery = Object.keys(query).length ? `?${new URLSearchParams(query).toString()}` : '';
-        return [
-          `PREVIEW, nothing sent: ${method} ${target.path}${shownQuery}`,
-          body !== undefined ? `body: ${cut(JSON.stringify(body), 1500, true)}` : 'body: none',
-          method === 'DELETE' ? 'This deletes the record.' : 'AroFlo has no undo for this.',
-          `Show this to the user. To send it, call aroflo_write again with identical method, path and body plus confirm="${code}". The code works once, for 10 minutes.`
-        ].join('\n');
+        const code = randomBytes(6).toString('hex');
+        issued.set(code, { digest, at: now });
+        return `PREVIEW, nothing sent:\n${describeRequest(p, false)}\nShow this to the user. To send it, call aroflo_write again with identical method, path and body plus confirm="${code}". The code works once, for 10 minutes.`;
       }
-      if (confirm !== code) throw new UsageError('That confirm code is for a different request: method, path and body must be identical to the preview. Preview again.');
-      if (!issued.has(code)) throw new UsageError('That confirm code has expired or was already used. Preview again.');
-      issued.delete(code); // single use, before sending: a retried call can never send twice
-
-      const bodySha256 = body === undefined ? undefined : createHash('sha256').update(canonical(body)).digest('hex');
-      try {
-        const res = await d.http.request(method, target.path, { query, body, confirmedWrite: true, template: op.k });
-        const warn = audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: op.k, path: target.path, status: res.status, outcome: 'ok', bodySha256, ids: idsIn(res.data) });
-        const detail = res.data === undefined ? '' : `\n${render(res.data, { maxText: 300, maxCell: 50 })}`;
-        const partial = res.status === 207 ? '\n207: some items failed; the rows above say which. Do not resend the ones that succeeded.' : '';
-        return `sent: ${op.k} -> ${res.status}${detail}${partial}${warn ? `\n(${warn})` : ''}`;
-      } catch (err) {
-        const outcome = err instanceof ApiError && err.outcome === 'unknown' ? 'unknown' : 'failed';
-        audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: op.k, path: target.path, status: err instanceof ApiError ? err.status : 0, outcome, bodySha256 });
-        throw err;
-      }
+      const entry = issued.get(confirm);
+      if (!entry) throw new UsageError('That confirm code has expired or was already used. Preview again.');
+      if (entry.digest !== digest) throw new UsageError('That confirm code is for a different request: method, path and body must be identical to the preview. Preview again.');
+      issued.delete(confirm); // single use, before sending: a retried call can never send twice
+      return send(p, d);
     }
   };
 }

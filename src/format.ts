@@ -138,12 +138,13 @@ export function table(rows: unknown[], opts: { columns?: string[]; maxCell?: num
   const max = opts.maxCell ?? 60;
   const rendered = clean_.map((r) => Object.fromEntries(cols.map((c) => [c, c in r ? cell(r[c], max) : ''])));
   // Columns identical on every row (3+ rows) are said once above the table instead of on each row.
+  // Compared on the underlying values, so two different notes that cut to the same prefix stay put.
   const same: string[] = [];
   if (rendered.length >= 3) {
     cols = cols.filter((c) => {
-      const v = rendered[0]![c]!;
-      if (v === '' || c === 'id' || !rendered.every((r) => r[c] === v)) return true;
-      same.push(`${c}=${v}`);
+      const raw = JSON.stringify(clean_[0]![c]);
+      if (rendered[0]![c] === '' || c === 'id' || !clean_.every((r) => JSON.stringify(r[c]) === raw)) return true;
+      same.push(`${c}=${rendered[0]![c]}`);
       return false;
     });
   }
@@ -156,7 +157,7 @@ export function table(rows: unknown[], opts: { columns?: string[]; maxCell?: num
 const NAME_PARTS = new Set(['givenName', 'givenNames', 'firstName', 'familyName', 'surname', 'lastName']);
 
 /** `label [id] k=v` for a small reference object; undefined when it is too big or nested to collapse. */
-function refText(o: Obj, max: number): string | undefined {
+function refText(o: Obj, max: number, full = false): string | undefined {
   const l = label(o);
   if (l === undefined || (typeof o.id !== 'string' && typeof o.id !== 'number')) return undefined;
   const labelKey = LABEL_KEYS.find((k) => typeof o[k] === 'string' || typeof o[k] === 'number');
@@ -164,14 +165,16 @@ function refText(o: Obj, max: number): string | undefined {
   const head = `${cut(l, max, true)} [${String(o.id)}]`;
   // A small ref keeps its few extra facts (a tax code's rate); a big one (a whole user) collapses to
   // name and id, and the model can read the record itself if it needs more.
-  if (rest.length <= 3 && rest.every(([, v]) => !isObj(v) && !Array.isArray(v))) return `${head}${rest.map(([k, v]) => ` ${k}=${scalar(v, 60)}`).join('')}`;
+  if (rest.some(([, v]) => isObj(v) || Array.isArray(v))) return full ? undefined : head;
+  if (rest.length <= 3 || full) return `${head}${rest.map(([k, v]) => ` ${k}=${scalar(v, full ? max : 60, full)}`).join('')}`;
   return head;
 }
 
 /** `key: value` lines for one record. Small nested refs become `label [id]`, others flatten one level. */
-export function record(input: unknown, opts: { maxText?: number; maxRows?: number } = {}): string {
-  const maxText = opts.maxText ?? 600;
-  const maxRows = opts.maxRows ?? 20;
+export function record(input: unknown, opts: { maxText?: number; maxRows?: number; full?: boolean } = {}): string {
+  const full = opts.full === true;
+  const maxText = opts.maxText ?? (full ? 100_000 : 600);
+  const maxRows = opts.maxRows ?? (full ? 500 : 20);
   const o = clean(input);
   if (!isObj(o)) return Array.isArray(o) ? table(o) : scalar(o, maxText, true);
   const lines: string[] = [];
@@ -181,25 +184,26 @@ export function record(input: unknown, opts: { maxText?: number; maxRows?: numbe
     if (Array.isArray(v)) {
       if (v.some(isObj)) {
         lines.push(`${k} (${v.length}):`);
-        lines.push(table(v.slice(0, maxRows), { maxCell: 50 }));
+        lines.push(table(v.slice(0, maxRows), { maxCell: full ? maxText : 50 }));
         if (v.length > maxRows) lines.push(`… ${v.length - maxRows} more`);
       } else lines.push(`${k}: ${cut(v.map((x) => scalar(x, 80)).join(', '), maxText, true)}`);
     } else if (isObj(v)) {
-      const ref = refText(v, maxText);
+      const ref = refText(v, maxText, full);
       if (ref) {
         lines.push(`${k}: ${ref}`);
         continue;
       }
-      // A small object of plain values goes on one line: `k: a=1, b=2`.
+      // A small object of plain values goes on one line: `k: a=1, b=2`. Nested refs keep their id.
       const entries = Object.entries(v);
-      if (entries.length <= 8 && entries.every(([, x]) => !Array.isArray(x) && (!isObj(x) || refText(x, 80) !== undefined || label(x) !== undefined))) {
-        lines.push(`${k}: ${entries.map(([k2, x]) => `${k2}=${isObj(x) ? (label(x) ?? '') : scalar(x, 120)}`).join(', ')}`);
+      if (!full && entries.length <= 8 && entries.every(([, x]) => !Array.isArray(x) && (!isObj(x) || label(x) !== undefined))) {
+        const one = (x: unknown) => (isObj(x) ? (refText(x, 80) ?? label(x) ?? '') : scalar(x, 120));
+        lines.push(`${k}: ${entries.map(([k2, x]) => `${k2}=${one(x)}`).join(', ')}`);
         continue;
       }
       for (const [k2, v2] of entries) {
-        const ref2 = isObj(v2) ? refText(v2, maxText) : undefined;
+        const ref2 = isObj(v2) ? refText(v2, maxText, full) : undefined;
         if (ref2) lines.push(`${k}.${k2}: ${ref2}`);
-        else if (isObj(v2) || Array.isArray(v2)) lines.push(`${k}.${k2}: ${cell(v2, 120)}`);
+        else if (isObj(v2) || Array.isArray(v2)) lines.push(`${k}.${k2}: ${full ? JSON.stringify(v2) : cell(v2, 120)}`);
         else lines.push(`${k}.${k2}: ${scalar(v2, maxText, true)}`);
       }
     } else lines.push(`${k}: ${scalar(v, maxText, true)}`);
@@ -208,7 +212,7 @@ export function record(input: unknown, opts: { maxText?: number; maxRows?: numbe
 }
 
 /** Render any response body: `{items: [...]}` envelopes as tables, objects as records. */
-export function render(data: unknown, opts: { columns?: string[]; maxText?: number; maxCell?: number } = {}): string {
+export function render(data: unknown, opts: { columns?: string[]; maxText?: number; maxCell?: number; full?: boolean } = {}): string {
   if (Array.isArray(data)) return table(data, opts);
   if (isObj(data) && Array.isArray(data.items)) return table(data.items, opts);
   return record(data, opts);
