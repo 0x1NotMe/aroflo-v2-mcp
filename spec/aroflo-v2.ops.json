@@ -15645,6 +15645,580 @@
     ]
    }
   },
+  "/creditnotes/{creditNoteId}/lineitems": {
+   "get": {
+    "description": "Returns a paginated list of the credit note's line items in office display order, with totals calculated the same way as the credit note header. Client credit notes return the unit amount as `sell` and supplier credit notes as `cost`; the other key is not present. The unit amount is tax inclusive when the credit note is. `trackingCentre` is omitted from each item when the caller cannot list tracking centres. Requires a standard login. Requires the `credit-notes:view` permission and access to the credit note's business unit.\n",
+    "operationId": "creditNoteLineItemsList",
+    "parameters": [
+     {
+      "description": "The unique identifier of the credit note.",
+      "example": "DBSG0000001",
+      "in": "path",
+      "name": "creditNoteId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "description": "The page number to return.",
+      "example": 1,
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "type": "integer"
+      }
+     },
+     {
+      "description": "The number of items per page.",
+      "example": 30,
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 30,
+       "maximum": 100,
+       "minimum": 1,
+       "type": "integer"
+      }
+     },
+     {
+      "description": "Comma-separated list of top-level fields to include in the response. Sub-entity fields can be filtered with bracket notation. Omitting `_fields` returns the full response. See the API overview for full syntax and behaviour.\n",
+      "example": "id,name,priority[id,description]",
+      "in": "query",
+      "name": "_fields",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "clientCreditNote": {
+          "summary": "Two lines on a client credit note",
+          "value": {
+           "count": 2,
+           "items": [
+            {
+             "accountCode": "4000",
+             "creditNoteType": "CLIENT",
+             "id": "DBSG0000041",
+             "inventoryItemId": "DBSG0000012",
+             "isInventoryItem": true,
+             "listOrder": 1,
+             "name": "Copper pipe 15mm",
+             "partNumber": "CU15",
+             "quantity": 4,
+             "sell": 18.63,
+             "stockHolder": {
+              "id": "DBSG0000034",
+              "name": "Example User",
+              "type": "USER"
+             },
+             "taxCode": {
+              "code": "GST",
+              "id": "DBSG0000008",
+              "rate": 10
+             },
+             "totalEx": 74.52,
+             "totalInc": 81.97,
+             "totalTax": 7.45,
+             "trackingCentre": {
+              "allowAsset": false,
+              "allowExpense": false,
+              "allowFreight": false,
+              "allowLabour": false,
+              "allowMaterial": true,
+              "id": "DBSG0000061",
+              "name": "Materials"
+             },
+             "unitType": "EA"
+            },
+            {
+             "accountCode": "N/A",
+             "creditNoteType": "CLIENT",
+             "id": "DBSG0000042",
+             "inventoryItemId": null,
+             "isInventoryItem": false,
+             "listOrder": 2,
+             "name": "Restocking fee",
+             "partNumber": "",
+             "quantity": 1,
+             "sell": 35.25,
+             "stockHolder": {
+              "id": "DBSG0000001",
+              "name": "Example Business Unit",
+              "type": "BUSINESS_UNIT"
+             },
+             "taxCode": {
+              "code": "GST",
+              "id": "DBSG0000008",
+              "rate": 10
+             },
+             "totalEx": 35.25,
+             "totalInc": 38.78,
+             "totalTax": 3.53,
+             "trackingCentre": null,
+             "unitType": "EA"
+            }
+           ],
+           "page": {
+            "count": 1,
+            "number": 1,
+            "size": 30
+           }
+          }
+         },
+         "emptyList": {
+          "summary": "No line items on the credit note",
+          "value": {
+           "count": 0,
+           "items": [],
+           "page": {
+            "count": 0,
+            "number": 1,
+            "size": 30
+           }
+          }
+         },
+         "supplierCreditNote": {
+          "summary": "One line on a supplier credit note",
+          "value": {
+           "count": 1,
+           "items": [
+            {
+             "accountCode": "5000",
+             "cost": 12.37,
+             "creditNoteType": "SUPPLIER",
+             "id": "DBSG0000043",
+             "inventoryItemId": null,
+             "isInventoryItem": false,
+             "listOrder": 1,
+             "name": "Fuel surcharge",
+             "partNumber": "",
+             "quantity": 2,
+             "stockHolder": {
+              "id": "DBSG0000001",
+              "name": "Example Business Unit",
+              "type": "BUSINESS_UNIT"
+             },
+             "taxCode": {
+              "code": "GST",
+              "id": "DBSG0000008",
+              "rate": 10
+             },
+             "totalEx": 24.74,
+             "totalInc": 27.21,
+             "totalTax": 2.47,
+             "trackingCentre": null,
+             "unitType": "EA"
+            }
+           ],
+           "page": {
+            "count": 1,
+            "number": 1,
+            "size": 30
+           }
+          }
+         }
+        },
+        "schema": {
+         "description": "A paginated list of credit note line items.",
+         "properties": {
+          "count": {
+           "description": "The total number of line items on the credit note, across all pages.",
+           "example": 2,
+           "type": "integer"
+          },
+          "items": {
+           "description": "The line items on this page.",
+           "items": {
+            "description": "A line item of a credit note. Client credit notes carry `sell`, supplier credit notes carry `cost`; the other key is not present.",
+            "properties": {
+             "accountCode": {
+              "description": "The account code for the line item, `N/A` when it has none.",
+              "example": "4000",
+              "type": "string"
+             },
+             "cost": {
+              "description": "Unit cost, tax inclusive when the credit note is. Only returned when `creditNoteType` is `SUPPLIER`.",
+              "example": 12.37,
+              "type": "number"
+             },
+             "creditNoteType": {
+              "description": "The type of the credit note the line belongs to.",
+              "enum": [
+               "CLIENT",
+               "SUPPLIER"
+              ],
+              "example": "CLIENT",
+              "type": "string"
+             },
+             "id": {
+              "description": "The unique identifier for the credit note line item.",
+              "example": "DBSG0000041",
+              "type": "string"
+             },
+             "inventoryItemId": {
+              "description": "The inventory item the line is linked to, or null for an ad hoc line.",
+              "example": "DBSG0000012",
+              "type": [
+               "string",
+               "null"
+              ]
+             },
+             "isInventoryItem": {
+              "description": "Whether the line is linked to an inventory item.",
+              "example": true,
+              "type": "boolean"
+             },
+             "listOrder": {
+              "description": "The display position of the line on the credit note, numbered across all pages.",
+              "example": 1,
+              "type": "integer"
+             },
+             "name": {
+              "description": "The description of the line item.",
+              "example": "Copper pipe 15mm",
+              "type": "string"
+             },
+             "partNumber": {
+              "description": "The part number of the line item, empty when it has none.",
+              "example": "CU15",
+              "type": "string"
+             },
+             "quantity": {
+              "description": "The quantity of the line item.",
+              "example": 4,
+              "type": "number"
+             },
+             "sell": {
+              "description": "Unit sell, tax inclusive when the credit note is. Only returned when `creditNoteType` is `CLIENT`.",
+              "example": 18.63,
+              "type": "number"
+             },
+             "stockHolder": {
+              "description": "The business unit, user or custom holder whose stock the line moves, or null when the line has none.",
+              "properties": {
+               "id": {
+                "description": "The unique identifier of the business unit, user or custom holder.",
+                "example": "DBSG0000034",
+                "type": "string"
+               },
+               "name": {
+                "description": "The name of the stock holder.",
+                "example": "Example User",
+                "type": "string"
+               },
+               "type": {
+                "description": "Which kind of holder `id` refers to.",
+                "enum": [
+                 "BUSINESS_UNIT",
+                 "USER",
+                 "CUSTOM_HOLDER"
+                ],
+                "example": "USER",
+                "type": "string"
+               }
+              },
+              "type": [
+               "object",
+               "null"
+              ]
+             },
+             "taxCode": {
+              "description": "The tax code of the line item, or null when it has none.",
+              "oneOf": [
+               {
+                "description": "The tax code and rate a credit note line was saved with, which its totals were calculated from, even if the tax code's rate has changed since. `id` is null when the code has been deleted.",
+                "properties": {
+                 "code": {
+                  "description": "The code for the tax code.",
+                  "example": "GST",
+                  "type": "string"
+                 },
+                 "id": {
+                  "description": "The unique identifier for the tax code, or null when it no longer exists.",
+                  "example": "DBSG0000008",
+                  "type": [
+                   "string",
+                   "null"
+                  ]
+                 },
+                 "rate": {
+                  "description": "The rate of the tax code.",
+                  "example": 10,
+                  "type": "number"
+                 }
+                },
+                "title": "CreditNoteLineItemTaxCodeSchema",
+                "type": "object"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             },
+             "totalEx": {
+              "description": "The line total excluding tax.",
+              "example": 74.52,
+              "type": "number"
+             },
+             "totalInc": {
+              "description": "The line total including tax.",
+              "example": 81.97,
+              "type": "number"
+             },
+             "totalTax": {
+              "description": "The tax on the line.",
+              "example": 7.45,
+              "type": "number"
+             },
+             "trackingCentre": {
+              "description": "The tracking centre of the line item, or null when it has none.",
+              "oneOf": [
+               {
+                "description": "A summarized representation of a tracking centre.",
+                "properties": {
+                 "allowAsset": {
+                  "description": "Whether asset line items can use this tracking centre.",
+                  "example": true,
+                  "type": "boolean"
+                 },
+                 "allowExpense": {
+                  "description": "Whether expense line items can use this tracking centre.",
+                  "example": false,
+                  "type": "boolean"
+                 },
+                 "allowFreight": {
+                  "description": "Whether freight line items can use this tracking centre.",
+                  "example": false,
+                  "type": "boolean"
+                 },
+                 "allowLabour": {
+                  "description": "Whether labour line items can use this tracking centre.",
+                  "example": true,
+                  "type": "boolean"
+                 },
+                 "allowMaterial": {
+                  "description": "Whether material line items can use this tracking centre.",
+                  "example": true,
+                  "type": "boolean"
+                 },
+                 "id": {
+                  "description": "The unique identifier for the tracking centre.",
+                  "example": "DBSG0000008",
+                  "type": "string"
+                 },
+                 "name": {
+                  "description": "The name of the tracking centre.",
+                  "example": "Labour",
+                  "type": "string"
+                 }
+                },
+                "title": "TrackingCentreSummarizedSchema",
+                "type": "object"
+               },
+               {
+                "type": "null"
+               }
+              ]
+             },
+             "unitType": {
+              "description": "The unit type of the line item.",
+              "example": "EA",
+              "type": "string"
+             }
+            },
+            "title": "CreditNoteLineItemListSchema",
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "page": {
+           "properties": {
+            "count": {
+             "description": "The total number of pages.",
+             "example": 1,
+             "type": "integer"
+            },
+            "number": {
+             "description": "The current page number.",
+             "example": 1,
+             "type": "integer"
+            },
+            "size": {
+             "description": "The number of items per page.",
+             "example": 30,
+             "type": "integer"
+            }
+           },
+           "title": "PageSchema",
+           "type": "object"
+          }
+         },
+         "title": "CreditNoteLineItemPaginatedListSchema",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful response",
+      "headers": {
+       "X-Total-Count": {
+        "description": "Total number of line items on the credit note, across all pages.",
+        "schema": {
+         "type": "integer"
+        }
+       }
+      }
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "fieldNotOnThisType": {
+          "summary": "_fields names the money key of the other credit note type",
+          "value": {
+           "error": "'cost' is not a valid field for this endpoint."
+          }
+         },
+         "invalidLimit": {
+          "summary": "Limit above the maximum",
+          "value": {
+           "error": "Invalid value for the 'limit' field. Maximum value is 100."
+          }
+         },
+         "invalidPage": {
+          "summary": "Page is not a number",
+          "value": {
+           "error": "The 'page' field must be of type: number"
+          }
+         }
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Bad Request - Invalid query parameter"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "example": {
+         "errorcode": "401 Unauthorized"
+        },
+        "schema": {
+         "properties": {
+          "errorcode": {
+           "description": "The error code indicating the type of authentication failure.",
+           "example": "401 Unauthorized",
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "Unauthorized - Authentication is required or has failed"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "example": {
+         "error": "You do not have permission to perform this action"
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Forbidden - You do not have permission to perform this action"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "example": {
+         "error": "The resource you are looking for could not be found"
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Not Found - The resource you are looking for could not be found"
+     },
+     "500": {
+      "content": {
+       "application/json": {
+        "example": {
+         "error": "Oops! That wasn't meant to happen. If it happens again, please let us know. We apologize for the inconvenience."
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Internal Server Error - An unexpected error occurred on the server"
+     }
+    },
+    "summary": "List credit note line items",
+    "tags": [
+     "Credit Note Line Items"
+    ]
+   }
+  },
   "/customfields/{zone}/{id}": {
    "get": {
     "description": "Returns the list of custom fields for a given zone and entity ID. Returns an empty list if the user does not have permission to view custom fields for the zone. For TASK_ASSETS, custom fields are not available while the parent task is in the Quote status.",
