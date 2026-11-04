@@ -72,24 +72,36 @@ const names = parseMap(u[1]);
 const hashes = parseMap(u[2]);
 
 // Route registry entries: "<key>":[()=>Promise.all([n.e("4014"),...,n.e("9376")]).then(...),"@site/docs/api/x.api.mdx",<module>]
-const routes = new Map();
 const routeRe =
   /"?[0-9a-f]+"?:\[\(\)=>(Promise\.all\(\[[^\]]*\]\)|[\w$]+\.e\("\d+"\))\.then\([\w$]+\.(?:t\.)?bind\([\w$]+,\d+(?:,\d+)?\)\),"(@site\/[^"]+)"/g;
+const routes = new Map(); // source -> candidate chunk URLs, most specific (last) first
 for (const m of main.matchAll(routeRe)) {
-  const ids = [...m[1].matchAll(/\.e\("(\d+)"\)/g)].map((x) => x[1]);
-  const cid = ids.at(-1);
-  if (!cid || !hashes[cid]) continue;
-  routes.set(m[2], `${SITE}/assets/js/${names[cid] ?? cid}.${hashes[cid]}.js`);
+  const ids = [...m[1].matchAll(/\.e\("(\d+)"\)/g)].map((x) => x[1]).reverse();
+  const urls = ids.filter((id) => hashes[id]).map((id) => `${SITE}/assets/js/${names[id] ?? id}.${hashes[id]}.js`);
+  if (urls.length) routes.set(m[2], urls);
 }
 
-const apiRoutes = [...routes].filter(([src]) => /^@site\/docs\/api\/.+\.api\.mdx$/.test(src));
-if (apiRoutes.length < 100) throw new Error(`only ${apiRoutes.length} API routes found; the docs build changed`);
+// Inventory every endpoint page the bundle mentions, independently of the registry regex, so a
+// registry entry in an unexpected shape fails the run instead of silently dropping an endpoint.
+const apiSources = [...new Set([...main.matchAll(/"(@site\/docs\/api\/[^"]+\.api\.mdx)"/g)].map((m) => m[1]))];
+const unresolved = apiSources.filter((src) => !routes.has(src));
+if (unresolved.length) throw new Error(`${unresolved.length} API pages could not be mapped to chunks: ${unresolved.slice(0, 5).join(', ')}`);
+if (apiSources.length < 100) throw new Error(`only ${apiSources.length} API pages found; the docs build changed`);
 
-const decoded = await mapLimit(apiRoutes, 6, async ([src, url]) => {
-  const js = await fetchText(url);
-  const blob = js.match(/"api":"(eJ[A-Za-z0-9+/=]+)"/)?.[1];
-  if (!blob) throw new Error(`no api blob in ${src}`);
-  return JSON.parse(inflateSync(Buffer.from(blob, 'base64')).toString('utf8'));
+const METHODS = new Set(['get', 'post', 'patch', 'put', 'delete']);
+const decoded = await mapLimit(apiSources, 6, async (src) => {
+  for (const url of routes.get(src)) {
+    const js = await fetchText(url);
+    if (!js.includes(`"source":"${src}"`)) continue; // a shared dependency chunk, not this page
+    const blobs = [...new Set([...js.matchAll(/"api":"(eJ[A-Za-z0-9+/=]+)"/g)].map((m) => m[1]))];
+    if (blobs.length !== 1) throw new Error(`${src}: expected one api blob, found ${blobs.length}`);
+    const op = JSON.parse(inflateSync(Buffer.from(blobs[0], 'base64')).toString('utf8'));
+    if (!METHODS.has(op.method) || typeof op.path !== 'string' || !op.path.startsWith('/') || typeof op.responses !== 'object') {
+      throw new Error(`${src}: decoded operation is malformed`);
+    }
+    return op;
+  }
+  throw new Error(`${src}: no chunk carries this page`);
 });
 
 const spec = { source: SITE, info: undefined, servers: undefined, securitySchemes: undefined, paths: {} };
@@ -99,19 +111,48 @@ for (const op of decoded) {
   spec.securitySchemes ??= op.securitySchemes;
   const { method, path, info, servers, securitySchemes, security, postman, ...rest } = op;
   rest.summary = postman?.name ?? rest.summary;
-  (spec.paths[path] ??= {})[method] = rest;
+  spec.paths[path] ??= {};
+  if (spec.paths[path][method]) throw new Error(`duplicate operation ${method.toUpperCase()} ${path}`);
+  spec.paths[path][method] = rest;
 }
 
-const notes = await mapLimit(
-  [...routes].filter(([src]) => /^@site\/blog\/.+api-changes\.md$/.test(src)),
-  4,
-  async ([, url]) => {
-    const js = await fetchText(url);
-    const pick = (key) => js.match(new RegExp(`"${key}":"((?:[^"\\\\]|\\\\.)*)"`))?.[1];
-    return { date: pick('date')?.slice(0, 10), title: pick('title'), summary: pick('description'), url: SITE + (pick('permalink') ?? '') };
+// Release notes: the page metadata is a JSON text inside a JS single-quoted string literal,
+// JSON.parse('...'). Decode the literal's escapes by hand (never eval) and parse the JSON.
+function decodeJsSingleQuoted(lit) {
+  return lit.replace(/\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g, (_, e) => {
+    if (e[0] === 'u') return String.fromCodePoint(parseInt(e[1] === '{' ? e.slice(2, -1) : e.slice(1), 16));
+    if (e[0] === 'x') return String.fromCharCode(parseInt(e.slice(1), 16));
+    return { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0' }[e] ?? e;
+  });
+}
+function pageMetadata(js) {
+  const at = js.indexOf("JSON.parse('");
+  if (at < 0) return undefined;
+  let i = at + "JSON.parse('".length;
+  let lit = '';
+  for (; i < js.length; i++) {
+    const ch = js[i];
+    if (ch === '\\') {
+      lit += ch + js[i + 1];
+      i++;
+    } else if (ch === "'") break;
+    else lit += ch;
   }
-);
-notes.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  return JSON.parse(decodeJsSingleQuoted(lit));
+}
+const noteSources = [...routes.keys()].filter((src) => /^@site\/blog\/.+api-changes\.md$/.test(src));
+const notes = await mapLimit(noteSources, 4, async (src) => {
+  for (const url of routes.get(src)) {
+    const js = await fetchText(url);
+    if (!js.includes(src)) continue;
+    const md = pageMetadata(js);
+    if (!md?.title || !md.date || !md.permalink) throw new Error(`${src}: release-note metadata missing title/date/permalink`);
+    return { date: String(md.date).slice(0, 10), title: md.title, summary: md.description ?? '', url: SITE + md.permalink };
+  }
+  throw new Error(`${src}: no chunk carries this release note`);
+});
+if (!notes.length) throw new Error('no release notes found; the docs blog changed');
+notes.sort((a, b) => b.date.localeCompare(a.date));
 
 mkdirSync(dirname(opsFile), { recursive: true });
 writeFileSync(opsFile, `${JSON.stringify(sortKeys(spec), null, 1)}\n`);
