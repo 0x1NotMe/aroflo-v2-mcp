@@ -62,7 +62,13 @@ export class AroFloHttp {
   async request(method: Method, path: string, opts: RequestOptions = {}): Promise<ApiResponse> {
     const token = this.cfg.token;
     if (!token) throw new ApiError(this.cfg.tokenError ?? 'no AroFlo token configured', 0);
+    const base = new URL(this.cfg.baseUrl);
     const url = new URL(this.cfg.baseUrl + path);
+    // Refuse anything URL parsing rewrote ("..", "%2e%2e", backslashes): the request must go exactly
+    // where it was validated, on the configured host.
+    if (url.origin !== base.origin || url.pathname !== `${base.pathname.replace(/\/$/, '')}${path}` || !path.startsWith('/')) {
+      throw new ApiError(`Refusing path ${JSON.stringify(path)}: it does not resolve to itself.`, 0);
+    }
     for (const [k, v] of Object.entries(opts.query ?? {})) url.searchParams.set(k, v);
     const write = method !== 'GET';
     const headers: Record<string, string> = {

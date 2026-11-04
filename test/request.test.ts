@@ -24,6 +24,9 @@ describe('resolveTarget', () => {
     expect(t.path).toBe('/businessunits/BU1/inventoryitems');
     expect(t.search.get('limit')).toBe('5');
   });
+  it.each(['/tasks/../labours', '/tasks/%2E%2E/labours', '/tasks/./labours', '/clients/a%2Fb', '/clients/a%5Cb', '/clients/a%00'])('rejects path tricks: %s', async (input) => {
+    await expect(resolveTarget(catalog, 'GET', input, bu)).rejects.toThrow(/Invalid/);
+  });
   it('refuses other placeholders', async () => {
     await expect(resolveTarget(catalog, 'GET', '/tasks/{taskId}/labours', bu)).rejects.toThrow(/needs a real taskId/);
   });

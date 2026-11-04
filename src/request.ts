@@ -43,6 +43,9 @@ export async function resolveTarget(catalog: ApiCatalog, method: Method, input: 
   let concrete = match.op.p;
   for (const name of match.op.pp) {
     let value = match.params[name] ?? '';
+    // Ids are opaque tokens. "..", "." or a decoded slash would let URL normalisation send the request
+    // to a different endpoint than the one validated (and, for writes, allowlisted).
+    if (/^\.{1,2}$/.test(value) || /[/\\\u0000-\u001f\u007f]/.test(value)) throw new UsageError(`Invalid ${name}: "${value}".`);
     if (PLACEHOLDER.test(value)) {
       if (!BU_NAMES.has(name)) throw new UsageError(`${match.op.p} needs a real ${name}, not ${value}.`);
       value = await bu.businessUnitId();

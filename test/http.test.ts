@@ -12,6 +12,13 @@ describe('AroFloHttp', () => {
     expect(f.calls[0]!.query).toEqual({ limit: '5' });
   });
 
+  it.each(['/tasks/../clients', '/tasks/%2e%2e/clients', 'tasks', '/a\\b'])('refuses a path that normalises to somewhere else: %s', async (path) => {
+    const f = fakeFetch({});
+    const http = new AroFloHttp(testConfig(), f.fn, noSleep);
+    await expect(http.request('GET', path)).rejects.toThrow(/does not resolve to itself/);
+    expect(f.calls).toHaveLength(0);
+  });
+
   it('fails clearly without a token and makes no call', async () => {
     const f = fakeFetch({});
     const http = new AroFloHttp(testConfig({ token: undefined, tokenError: 'no AroFlo token: set AROFLO_V2_API_KEY' }), f.fn, noSleep);
