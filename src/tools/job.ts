@@ -44,7 +44,7 @@ export const jobTool: Tool = {
   },
 
   async run(args, d) {
-    const ref = await d.jobs.resolve('tasks', str(args, 'job'));
+    const ref = await d.jobs.resolve('tasks', str(args, 'job'), d.signal);
     const id = encodeURIComponent(ref.id);
     const task = await d.http.request('GET', `/tasks/${id}`, { query: { _fields: JOB_FIELDS }, template: 'GET /tasks/{taskId}', signal: d.signal });
     const bu = await d.ctx.businessUnitId();

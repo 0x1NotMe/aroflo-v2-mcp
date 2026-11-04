@@ -37,7 +37,7 @@ export const quoteTool: Tool = {
   },
 
   async run(args, d) {
-    const ref = await d.jobs.resolve('quotes', str(args, 'quote'));
+    const ref = await d.jobs.resolve('quotes', str(args, 'quote'), d.signal);
     const id = encodeURIComponent(ref.id);
     const lineOp = d.catalog.get('GET /quotes/{quoteId}/lineitems')!;
     const header = await d.http.request('GET', `/quotes/${id}`, { query: { _fields: QUOTE_HEADER_FIELDS }, template: 'GET /quotes/{quoteId}', signal: d.signal });

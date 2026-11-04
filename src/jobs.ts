@@ -36,10 +36,10 @@ export class JobIndex {
   constructor(private readonly http: AroFloHttp) {}
 
   /** Accepts a job number ("8664" or "#8664") or an AroFlo id. */
-  async resolve(kind: Kind, ref: string): Promise<JobRef> {
+  async resolve(kind: Kind, ref: string, signal?: AbortSignal): Promise<JobRef> {
     const s = ref.trim().replace(/^#/, '');
     if (/^\d{1,9}$/.test(s)) {
-      const hit = await this.find(kind, Number(s));
+      const hit = await this.find(kind, Number(s), signal);
       if (!hit) throw new UsageError(`No ${NOUN[kind]} with job number ${s}.`);
       return hit;
     }
@@ -47,25 +47,25 @@ export class JobIndex {
     return { id: s };
   }
 
-  async find(kind: Kind, jobNumber: number): Promise<JobRef | undefined> {
+  async find(kind: Kind, jobNumber: number, signal?: AbortSignal): Promise<JobRef | undefined> {
     const cache = this.seen[kind];
     const hit = () => cache.get(jobNumber);
     if (hit()) return hit();
     const sorted = kind === 'tasks';
 
-    let first = await this.page(kind, 1);
+    let first = await this.page(kind, 1, false, signal);
     if (hit()) return hit();
     if (first.pages <= 1) {
       if (first.max >= jobNumber) return undefined;
-      first = await this.page(kind, 1, true); // a new job may have arrived since page 1 was cached
+      first = await this.page(kind, 1, true, signal); // a new job may have arrived since page 1 was cached
       return hit();
     }
-    let last = await this.page(kind, first.pages);
+    let last = await this.page(kind, first.pages, false, signal);
     if (hit()) return hit();
     if (jobNumber > last.max) {
       // New jobs land at the end: re-read the page count and the last page before saying no.
-      first = await this.page(kind, 1, true);
-      last = await this.page(kind, first.pages, true);
+      first = await this.page(kind, 1, true, signal);
+      last = await this.page(kind, first.pages, true, signal);
       if (hit()) return hit();
     }
     const pages = first.pages;
@@ -83,7 +83,7 @@ export class JobIndex {
         const frac = (jobNumber - loMax) / (hiMin - loMax);
         probe = Math.min(hi - 1, Math.max(lo + 1, lo + 1 + Math.floor(frac * (hi - lo - 1))));
       } else probe = Math.floor((lo + hi) / 2);
-      const p = await this.page(kind, probe);
+      const p = await this.page(kind, probe, false, signal);
       if (hit()) return hit();
       if (p.min > p.max) return undefined; // empty page: the data shrank under us
       if (jobNumber < p.min) {
@@ -98,13 +98,13 @@ export class JobIndex {
     // The quote list can be locally out of order: look next door before giving up.
     for (const n of [probe - 1, probe + 1, probe - 2, probe + 2]) {
       if (n < 1 || n > pages || this.fresh(kind, n)) continue;
-      await this.page(kind, n);
+      await this.page(kind, n, false, signal);
       if (hit()) return hit();
     }
     if (sorted) return undefined;
     for (let n = 1; n <= pages; n++) {
       if (this.fresh(kind, n)) continue;
-      await this.page(kind, n);
+      await this.page(kind, n, false, signal);
       if (hit()) return hit();
     }
     return undefined;
@@ -115,12 +115,12 @@ export class JobIndex {
     return p !== undefined && Date.now() - p.at < PAGE_TTL_MS;
   }
 
-  private async page(kind: Kind, n: number, refresh = false): Promise<Page> {
+  private async page(kind: Kind, n: number, refresh = false, signal?: AbortSignal): Promise<Page> {
     const known = this.fetched[kind].get(n);
     if (known && !refresh && this.fresh(kind, n)) return known;
     const query: Record<string, string> = { _fields: 'id,jobNumber,name', page: String(n), limit: String(PAGE) };
     if (kind === 'tasks') Object.assign(query, { sortBy: 'jobnumber', ascending: 'true' });
-    const res = await this.http.request('GET', `/${kind}`, { query, collection: true, template: `GET /${kind}` });
+    const res = await this.http.request('GET', `/${kind}`, { query, collection: true, template: `GET /${kind}`, signal });
     const data = res.data;
     const rows = isObj(data) && Array.isArray(data.items) ? data.items : [];
     let min = Number.POSITIVE_INFINITY;

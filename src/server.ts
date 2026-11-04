@@ -17,6 +17,8 @@ export const INSTRUCTIONS =
 
 /** Low daily budget: tell the model, so it stops spending calls. */
 const BUDGET_WARN = 250;
+/** Hard ceiling on one tool result (~15k tokens), whatever the arguments: full=true included. */
+export const MAX_OUTPUT_CHARS = 60_000;
 
 /** The write tool's confirm mode depends on the client, so the tool list is built after initialize. */
 export function toolsFor(cfg: Config, writeMode: 'dialog' | 'code' = 'code'): Tool[] {
@@ -35,6 +37,7 @@ export async function callTool(tools: Tool[], name: string, args: Record<string,
   if (!tool) return { text: `Unknown tool ${name}. Tools: ${tools.map((t) => t.def.name).join(', ')}.`, isError: true };
   try {
     let text = await tool.run(args, deps);
+    if (text.length > MAX_OUTPUT_CHARS) text = `${text.slice(0, MAX_OUTPUT_CHARS)}\n… [output cut at ${MAX_OUTPUT_CHARS} chars of ${text.length}; narrow it with _fields, limit or a filter]`;
     const left = deps.http.rate.dailyRemaining;
     if (left !== undefined && left < BUDGET_WARN) text += `\n[AroFlo calls left today: ${left}]`;
     return { text, isError: false };

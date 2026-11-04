@@ -12,7 +12,10 @@ export class SessionContext implements BusinessUnitSource {
     private readonly cfg: Config
   ) {}
 
-  /** AROFLO_V2_BUSINESS_UNIT_ID, else the first business unit the token can see. */
+  /**
+   * AROFLO_V2_BUSINESS_UNIT_ID, else the first business unit the token can see. Fetched once and shared
+   * by concurrent calls, so it deliberately takes no per-call cancellation signal.
+   */
   businessUnitId(): Promise<string> {
     if (this.cfg.businessUnitId) return Promise.resolve(this.cfg.businessUnitId);
     this.bu ??= (async () => {
