@@ -64,7 +64,7 @@ export const HINTS: Record<string, Array<{ param?: string; absent?: string; text
   ],
   'GET /schedules': [{ param: 'scheduleZone', text: 'scheduleZone=USER lists the token user\'s own calendar for currentDate; a job\'s schedule is in aroflo_job.' }],
   'GET /timesheets/entries': [
-    { absent: 'endDate', text: 'No endDate, so this is one day only: endDate defaults to entryDate.' },
+    { absent: 'endDate', text: 'Without endDate you get one day only: endDate defaults to entryDate.' },
     { text: 'Rows carry no task. For one job add taskId=<task id, not the job number>.' }
   ]
 };

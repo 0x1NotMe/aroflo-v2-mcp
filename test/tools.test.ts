@@ -24,17 +24,26 @@ const lines = [
   { item: 'Lighting', type: 'MATERIAL', quantity: 1, uom: 'ea', unitSell: 900, lineTotal: 900, labourQuantity: 0, isOptional: true, isAssembly: false, parentId: null }
 ];
 
-/** Every table in `text` with a `col` column: first cell of each row to that row's `col` cell. */
-function column(text: string, col: string): Map<string, string> {
-  const out = new Map<string, string>();
+/** Rows of every table in `text` that has a `col` column, as [first cell, `col` cell]. A table's header is the first tab line after a line without tabs. */
+function column(text: string, col: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
   let at = -1;
+  let inTable = false;
   for (const line of text.split('\n')) {
     const cells = line.split('\t');
-    if (cells.includes(col)) at = cells.indexOf(col);
-    else if (cells.length === 1) at = -1;
-    else if (at >= 0) out.set(cells[0]!, cells[at] ?? '');
+    const tabbed = cells.length > 1;
+    if (tabbed && !inTable) at = cells.indexOf(col);
+    else if (tabbed && at >= 0) out.push([cells[0]!, cells[at] ?? '']);
+    inTable = tabbed;
   }
   return out;
+}
+
+/** The `col` cell of the single row whose first cell is `key`. */
+function cellOf(text: string, col: string, key: string): string {
+  const hits = column(text, col).filter(([k]) => k === key);
+  expect(hits, `rows starting "${key}"`).toHaveLength(1);
+  return hits[0]![1];
 }
 
 const routes: Record<string, (call: Call) => Reply> = {
@@ -126,7 +135,7 @@ describe('aroflo_get', () => {
   it('warns when a timesheet query leaves out endDate, because AroFlo then returns one day', async () => {
     const { call } = setup();
     const day = await call('aroflo_get', { path: '/timesheets/entries?subzone=TASK_TIMESHEETS&entryDate=2026-10-01' });
-    expect(day.text).toMatch(/\nhint: No endDate, so this is one day only: endDate defaults to entryDate\.$/);
+    expect(day.text).toMatch(/\nhint: Without endDate you get one day only: endDate defaults to entryDate\.$/);
     expect(day.text).not.toContain('Rows carry no task');
     const month = await call('aroflo_get', { path: '/timesheets/entries?subzone=TASK_TIMESHEETS&entryDate=2026-10-01&endDate=2026-10-31' });
     expect(month.text).not.toContain('hint:');
@@ -207,7 +216,7 @@ describe('aroflo_api', () => {
     const r = await call('aroflo_api', { q: 'GET /timesheets/entries' });
     expect(r.text).toMatch(/subzone\* \(TASK_TIMESHEETS\|OVERHEAD_TIMESHEETS\|EXPENSE_TIMESHEETS\)/);
     expect(r.text).toContain('default fields: id,date,hours,user,workType,trackingCentre,note');
-    expect(r.text).toContain('hint: No endDate, so this is one day only');
+    expect(r.text).toContain('hint: Without endDate you get one day only');
     expect(r.text).toContain('hint: Rows carry no task. For one job add taskId=');
   });
 
@@ -257,9 +266,8 @@ describe('aroflo_quote', () => {
     expect(r.text).toContain('sections (1):\nid\tname\ttotalInc\tlabourHours\nK1\tHARDSCAPES\t9900\t30');
     expect(r.text).toContain('lines: 2 top-level of 3 (lines=true lists all)');
     expect(r.text).not.toContain('Sandstone');
-    const hours = column(r.text, 'labourHours');
-    expect(hours.get('Retaining wall')).toBe('30');
-    expect(hours.get('Lighting')).toBe('');
+    expect(cellOf(r.text, 'labourHours', 'Retaining wall')).toBe('30');
+    expect(cellOf(r.text, 'labourHours', 'Lighting')).toBe('');
   });
 
   it('lines=true lists every line by section, children marked, hours on top-level lines only', async () => {
@@ -268,9 +276,38 @@ describe('aroflo_quote', () => {
     expect(r.text).toContain('## HARDSCAPES (3 lines)');
     expect(r.text).toContain('- Sandstone block');
     expect(r.text).toMatch(/Lighting.*\tyes$/m);
-    const hours = column(r.text, 'labourHours');
-    expect(hours.get('Retaining wall')).toBe('30');
-    expect(hours.get('- Sandstone block')).toBe('');
+    expect(cellOf(r.text, 'labourHours', 'Retaining wall')).toBe('30');
+    expect(cellOf(r.text, 'labourHours', '- Sandstone block')).toBe('');
+  });
+
+  const quoteWith = async (extra: Record<string, (call: Call) => Reply>) => {
+    const f = fakeFetch({ ...routes, ...extra });
+    const cfg = testConfig();
+    return callTool(toolsFor(cfg), 'aroflo_quote', { quote: 'Q10' }, makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)));
+  };
+
+  it('labels the labour hours partial when a section has none, and reads line hours from strings and credits', async () => {
+    const r = await quoteWith({
+      'GET /quotes/Q10/takeoffs': pagedList([
+        { id: 'K1', name: 'HARDSCAPES', breakdown: { totalInc: 9900, totalLabourHours: 30 } },
+        { id: 'K2', name: 'PLANTING', breakdown: null }
+      ]),
+      'GET /quotes/Q10/lineitems': pagedList([
+        { item: 'Turf', quantity: '4', labourQuantity: '1.5', parentId: null },
+        { item: 'Credit paving', quantity: -2, labourQuantity: 3, parentId: null },
+        { item: 'Edging', quantity: 3, labourQuantity: 0.333, parentId: null }
+      ])
+    });
+    expect(r.text).toContain('labour hours: 30 (partial: 1 of 2 sections report hours)');
+    expect(cellOf(r.text, 'labourHours', 'Turf')).toBe('6');
+    expect(cellOf(r.text, 'labourHours', 'Credit paving')).toBe('-6');
+    expect(cellOf(r.text, 'labourHours', 'Edging')).toBe('1');
+  });
+
+  it('adds labour hours across pages of sections, and says when the section list was cut', async () => {
+    const sections = (n: number) => pagedList(Array.from({ length: n }, (_, i) => ({ id: `K${i}`, name: `S${i}`, breakdown: { totalInc: 1, totalLabourHours: 1 } })));
+    expect((await quoteWith({ 'GET /quotes/Q10/takeoffs': sections(101) })).text).toMatch(/^labour hours: 101$/m);
+    expect((await quoteWith({ 'GET /quotes/Q10/takeoffs': sections(501) })).text).toContain('labour hours: 500 (partial: first 500 sections only)');
   });
 
   it('leaves out the labour hours line when no section reports hours', async () => {

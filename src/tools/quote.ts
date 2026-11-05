@@ -9,6 +9,12 @@ const MONEY = ['total', 'tax', 'taxInclusive', 'labour', 'materials', 'markup', 
 /** lines=true fetches one section at a time; past this many sections, point at aroflo_get instead. */
 const MAX_SECTIONS = 30;
 
+/** A number sent as a number or a numeric string; undefined when missing or not a number. */
+function hoursOf(v: unknown): number | undefined {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function lineRow(l: Obj, nested: boolean): Obj {
   const child = l.parentId !== null && l.parentId !== undefined;
   // labourQuantity is labour hours per unit. On a top-level line, times quantity, it is the line's hours,
@@ -67,11 +73,15 @@ export const quoteTool: Tool = {
       const money = MONEY.filter((k) => counts[k] !== undefined && counts[k] !== null).map((k) => `${k} ${String(counts[k])}`);
       if (money.length) out.push(`totals: ${money.join(', ')}`);
     }
-    // The quote's labour hours are AroFlo's per-section figures added up; the header has no hours total.
-    const timed = sections.filter((s) => s.labourHours !== undefined && s.labourHours !== null);
+    // The quote's labour hours: AroFlo's per-section figures added up (the header has no hours total).
+    // A section without a figure, or a section list cut short, makes the sum partial, and the line says so.
+    const timed = sections.map((s) => hoursOf(s.labourHours)).filter((n): n is number => n !== undefined);
     if (timed.length) {
-      const more = takeoffs.status === 'fulfilled' && takeoffs.value.next ? '+' : '';
-      out.push(`labour hours: ${round(timed.reduce((sum, s) => sum + num(s.labourHours), 0))}${more}`);
+      const gaps = [
+        timed.length < sections.length ? `${timed.length} of ${sections.length} sections report hours` : '',
+        takeoffs.status === 'fulfilled' && takeoffs.value.next ? `first ${sections.length} sections only` : ''
+      ].filter(Boolean);
+      out.push(`labour hours: ${round(timed.reduce((a, b) => a + b, 0))}${gaps.length ? ` (partial: ${gaps.join('; ')})` : ''}`);
     }
 
     if (takeoffs.status === 'rejected') out.push(failure('sections', takeoffs)!);
