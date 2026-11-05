@@ -2,6 +2,8 @@
 
 An MCP server for the AroFlo API v2, built for Codex. It is read-only unless you switch writes on, and it keeps what it sends to the model small: the tool definitions cost about 500 tokens per turn, where the v1 server (`aroflo-mcp`, 51 tools) cost about 26,000.
 
+**Unofficial.** This is an independent project. It is not made, endorsed or supported by AroFlo, and it has no affiliation with AroFlo Innovations Pty Ltd. AroFlo® is a trademark of AroFlo Innovations Pty Ltd. The server connects to AroFlo through API v2, which is in open beta and changes most weeks. You run it with your own AroFlo API credentials, under your own [API Licence Agreement](https://aroflo.com/policies/api-terms-of-use-policy) with AroFlo. It comes with no warranty: check what it reads, and above all what it writes, before you rely on it.
+
 ## Tools
 
 | Tool | What it does |
