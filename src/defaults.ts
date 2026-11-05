@@ -17,7 +17,7 @@ export const DEFAULT_FIELDS: Record<string, string> = {
 export const JOB_FIELDS = 'id,jobNumber,name,status,substatus,taskType,client,location,locationText,dueDate,requestedDateTime,priority,project,description,resources,schedule';
 export const JOB_LABOUR_FIELDS = 'date,hours,user,workType';
 export const JOB_MATERIAL_FIELDS = 'itemName,partNumber,quantity,unitType,sell';
-export const QUOTE_LINE_FIELDS = 'item,partNumber,type,quantity,uom,unitSell,lineTotal,isOptional,isAssembly,parentId';
+export const QUOTE_LINE_FIELDS = 'item,partNumber,type,quantity,uom,unitSell,lineTotal,labourQuantity,isOptional,isAssembly,parentId';
 export const QUOTE_HEADER_FIELDS = 'id,jobNumber,name,status,substatus,acceptanceStatus,client,estimatedByUser,dueDate,requested,locationText,taskType,description,counts';
 
 /**
@@ -27,7 +27,9 @@ export const QUOTE_HEADER_FIELDS = 'id,jobNumber,name,status,substatus,acceptanc
  */
 export const COMPOSITE_USES: Record<string, string[]> = {
   'GET /businessunits': ['id', 'param:_fields', 'param:limit'],
-  'GET /tasks': ['id', 'jobNumber', 'name', 'param:sortBy', 'param:ascending', 'param:_fields', 'param:page', 'param:limit'],
+  // serviceId: the task-type filter named in the aroflo_get description and a hint.
+  'GET /tasks': ['id', 'jobNumber', 'name', 'param:sortBy', 'param:ascending', 'param:_fields', 'param:page', 'param:limit', 'param:serviceId'],
+  'GET /timesheets/entries': ['param:endDate', 'param:taskId'],
   'GET /quotes': ['id', 'jobNumber', 'name', 'param:_fields', 'param:page', 'param:limit'],
   'GET /tasks/{taskId}': [...JOB_FIELDS.split(','), 'param:_fields'],
   'GET /tasks/{taskId}/labours': [...JOB_LABOUR_FIELDS.split(','), 'param:_fields', 'param:page', 'param:limit'],
@@ -52,12 +54,17 @@ export function usedOps(): Record<string, string[]> {
 }
 
 /**
- * Facts about AroFlo behaviour the spec doesn't state, learned from live calls. Shown in aroflo_api
- * details, and appended to an aroflo_get result only when the call uses the named parameter.
+ * Facts about AroFlo behaviour the spec doesn't state, learned from live calls. All are shown in aroflo_api
+ * details. One is appended to an aroflo_get result when the call uses `param`, or leaves out `absent`.
  */
-export const HINTS: Record<string, Array<{ param?: string; text: string }>> = {
+export const HINTS: Record<string, Array<{ param?: string; absent?: string; text: string }>> = {
   'GET /tasks': [
-    { param: 'requiredByTo', text: 'requiredByTo=D stops at D 00:00, so jobs due later on D are left out; to cover all of day D use requiredByTo=D+1 and drop rows due D+1.' }
+    { param: 'requiredByTo', text: 'requiredByTo=D stops at D 00:00, so jobs due later on D are left out; to cover all of day D use requiredByTo=D+1 and drop rows due D+1.' },
+    { text: 'serviceId=<id from /types/tasks> filters by task type. serviceList answered 500 in testing.' }
   ],
-  'GET /schedules': [{ param: 'scheduleZone', text: 'scheduleZone=USER lists the token user\'s own calendar for currentDate; a job\'s schedule is in aroflo_job.' }]
+  'GET /schedules': [{ param: 'scheduleZone', text: 'scheduleZone=USER lists the token user\'s own calendar for currentDate; a job\'s schedule is in aroflo_job.' }],
+  'GET /timesheets/entries': [
+    { absent: 'endDate', text: 'No endDate, so this is one day only: endDate defaults to entryDate.' },
+    { text: 'Rows carry no task. For one job add taskId=<task id, not the job number>.' }
+  ]
 };

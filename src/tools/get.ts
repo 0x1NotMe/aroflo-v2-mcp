@@ -21,7 +21,7 @@ export const getTool: Tool = {
   def: {
     name: 'aroflo_get',
     description:
-      'Read AroFlo data by API path plus query, e.g. /clients?name.like=smith, /tasks?status=1&sortBy=requiredby, /tasks/{id}/labours, /schedules?scheduleZone=USER&currentDate=2026-11-05. Lists return 25 rows (limit=N up to 500, page=N). _fields=a,b picks columns. Business-unit ids fill themselves. Unsure of a path or filter: aroflo_api.',
+      'Read AroFlo data by API path plus query, e.g. /clients?name.like=smith, /tasks?status=1&serviceId=<task type id from /types/tasks>, /tasks/{id}/labours, /schedules?scheduleZone=USER&currentDate=2026-11-05. Lists return 25 rows (limit=N up to 500, page=N). _fields=a,b picks columns. Business-unit ids fill themselves. Unsure of a path or filter: aroflo_api.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -63,7 +63,9 @@ export const getTool: Tool = {
       const columns = query._fields ? fieldNames(query._fields) : defaults ? fieldNames(defaults) : undefined;
       const rows = defaults && !serverSide ? r.items.map((row) => (isObj(row) ? Object.fromEntries(columns!.filter((c) => c in row).map((c) => [c, row[c]])) : row)) : r.items;
       const body = table(rows, { columns, maxCell });
-      const hints = (HINTS[op.k] ?? []).filter((h) => h.param && h.param in query).map((h) => `hint: ${h.text}`);
+      const hints = (HINTS[op.k] ?? [])
+        .filter((h) => (h.param !== undefined && h.param in query) || (h.absent !== undefined && !(h.absent in query)))
+        .map((h) => `hint: ${h.text}`);
       return [listHeader(r), body, ...hints].filter(Boolean).join('\n');
     }
     const res = await d.http.request('GET', target.path, { query, collection: op.pp.length === 0, template: op.k, signal: d.signal });

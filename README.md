@@ -7,8 +7,8 @@ An MCP server for the AroFlo API v2, built for Codex. It is read-only unless you
 | Tool | What it does |
 |---|---|
 | `aroflo_job` | One job in one call: details, schedule and staff, labour hours by person and work type, materials, latest notes. Takes a job number or task id. |
-| `aroflo_quote` | One quote in one call: header, totals, sections and top-level lines. `lines=true` lists every line by section. Takes a job number or quote id. |
-| `aroflo_get` | Any read endpoint as a path with a query, for example `/clients?name.like=smith` or `/tasks?status=1&sortBy=requiredby`. Returns 25 rows by default as a compact table. |
+| `aroflo_quote` | One quote in one call: header, totals, labour hours, sections and top-level lines with each line's labour hours. `lines=true` lists every line by section. Takes a job number or quote id. |
+| `aroflo_get` | Any read endpoint as a path with a query, for example `/clients?name.like=smith` or `/tasks?status=1&serviceId=<task type id>`. Returns 25 rows by default as a compact table. |
 | `aroflo_api` | Finds endpoints and shows one endpoint's filters, fields and rules. The model uses it only when it doesn't know a path. |
 | `aroflo_write` | Creates or changes records. It only exists when `AROFLO_V2_WRITE_OPS` is set. See [Writes](#writes). |
 

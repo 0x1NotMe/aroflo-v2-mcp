@@ -2,15 +2,19 @@ import { QUOTE_HEADER_FIELDS, QUOTE_LINE_FIELDS } from '../defaults.js';
 import { isObj, record, table, type Obj } from '../format.js';
 import { fetchList } from '../list.js';
 import { failure, rethrowAuth } from './job.js';
-import { flag, str, type Tool } from './types.js';
+import { flag, num, round, str, type Tool } from './types.js';
 
-/** The money-related keys of a quote's `counts` (the rest are checklist and form tallies). */
+/** The money-related keys of a quote's `counts` (the rest are checklist and form tallies). `labour` is money, not hours. */
 const MONEY = ['total', 'tax', 'taxInclusive', 'labour', 'materials', 'markup', 'labourMarkup', 'materialMarkup'];
 /** lines=true fetches one section at a time; past this many sections, point at aroflo_get instead. */
 const MAX_SECTIONS = 30;
 
 function lineRow(l: Obj, nested: boolean): Obj {
   const child = l.parentId !== null && l.parentId !== undefined;
+  // labourQuantity is labour hours per unit. On a top-level line, times quantity, it is the line's hours,
+  // and those add up to the sections' totalLabourHours (checked on a live quote). A component's quantity
+  // is per unit of its assembly, so the same product is not hours on the quote: component rows show none.
+  const hours = child ? 0 : num(l.labourQuantity) * num(l.quantity);
   return {
     item: nested && child ? `- ${String(l.item ?? '')}` : l.item,
     partNumber: l.partNumber,
@@ -19,6 +23,7 @@ function lineRow(l: Obj, nested: boolean): Obj {
     uom: l.uom,
     unitSell: l.unitSell,
     lineTotal: l.lineTotal,
+    labourHours: hours ? round(hours) : undefined,
     optional: l.isOptional === true ? 'yes' : undefined
   };
 }
@@ -26,7 +31,7 @@ function lineRow(l: Obj, nested: boolean): Obj {
 export const quoteTool: Tool = {
   def: {
     name: 'aroflo_quote',
-    description: 'One quote in one call: header, totals, sections (takeoffs) and top-level lines. quote = job number or quote id. lines=true lists every line by section.',
+    description: 'One quote in one call: header, totals, labour hours, sections (takeoffs) and top-level lines. quote = job number or quote id. lines=true lists every line by section.',
     inputSchema: {
       type: 'object',
       properties: { quote: { type: 'string' }, lines: { type: 'boolean' } },
@@ -47,12 +52,6 @@ export const quoteTool: Tool = {
     const h: Obj = isObj(header.data) ? { ...header.data } : {};
     const counts = isObj(h.counts) ? h.counts : undefined;
     delete h.counts;
-    const out = [record(h, { maxText: 300 })];
-    if (counts) {
-      const money = MONEY.filter((k) => counts[k] !== undefined && counts[k] !== null).map((k) => `${k} ${String(counts[k])}`);
-      if (money.length) out.push(`totals: ${money.join(', ')}`);
-    }
-
     const sections =
       takeoffs.status === 'fulfilled'
         ? takeoffs.value.items.filter(isObj).map((t) => ({
@@ -62,6 +61,19 @@ export const quoteTool: Tool = {
             labourHours: isObj(t.breakdown) ? t.breakdown.totalLabourHours : undefined
           }))
         : [];
+
+    const out = [record(h, { maxText: 300 })];
+    if (counts) {
+      const money = MONEY.filter((k) => counts[k] !== undefined && counts[k] !== null).map((k) => `${k} ${String(counts[k])}`);
+      if (money.length) out.push(`totals: ${money.join(', ')}`);
+    }
+    // The quote's labour hours are AroFlo's per-section figures added up; the header has no hours total.
+    const timed = sections.filter((s) => s.labourHours !== undefined && s.labourHours !== null);
+    if (timed.length) {
+      const more = takeoffs.status === 'fulfilled' && takeoffs.value.next ? '+' : '';
+      out.push(`labour hours: ${round(timed.reduce((sum, s) => sum + num(s.labourHours), 0))}${more}`);
+    }
+
     if (takeoffs.status === 'rejected') out.push(failure('sections', takeoffs)!);
     else if (sections.length) out.push(`sections (${sections.length}${takeoffs.value.next ? '+' : ''}):\n${table(sections)}`);
 
