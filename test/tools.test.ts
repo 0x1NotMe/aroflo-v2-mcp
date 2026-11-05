@@ -17,16 +17,34 @@ function sortedTasks(call: Call): Reply {
   return pagedList(rows)(call);
 }
 
+// labourQuantity = hours per unit. The component's quantity is per unit of its assembly (2 walls x 15 h = 30 h).
 const lines = [
-  { item: 'Retaining wall', type: 'MATERIAL', quantity: 1, uom: 'ea', unitSell: 5000, lineTotal: 5000, isOptional: false, isAssembly: true, parentId: null },
-  { item: 'Sandstone block', type: 'MATERIAL', quantity: 40, uom: 'ea', unitSell: 100, lineTotal: 4000, isOptional: false, isAssembly: false, parentId: 11 },
-  { item: 'Lighting', type: 'MATERIAL', quantity: 1, uom: 'ea', unitSell: 900, lineTotal: 900, isOptional: true, isAssembly: false, parentId: null }
+  { item: 'Retaining wall', type: 'MATERIAL', quantity: 2, uom: 'ea', unitSell: 2500, lineTotal: 5000, labourQuantity: 15, isOptional: false, isAssembly: true, parentId: null },
+  { item: 'Sandstone block', type: 'MATERIAL', quantity: 20, uom: 'ea', unitSell: 100, lineTotal: 2000, labourQuantity: 0.75, isOptional: false, isAssembly: false, parentId: 11 },
+  { item: 'Lighting', type: 'MATERIAL', quantity: 1, uom: 'ea', unitSell: 900, lineTotal: 900, labourQuantity: 0, isOptional: true, isAssembly: false, parentId: null }
 ];
+
+/** Every table in `text` with a `col` column: first cell of each row to that row's `col` cell. */
+function column(text: string, col: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let at = -1;
+  for (const line of text.split('\n')) {
+    const cells = line.split('\t');
+    if (cells.includes(col)) at = cells.indexOf(col);
+    else if (cells.length === 1) at = -1;
+    else if (at >= 0) out.set(cells[0]!, cells[at] ?? '');
+  }
+  return out;
+}
 
 const routes: Record<string, (call: Call) => Reply> = {
   'GET /businessunits': () => ({ body: { count: 1, page: { number: 1, size: 1, count: 1 }, items: [{ id: 'BU1' }] } }),
   'GET /tasks': sortedTasks,
   'GET /quotes': pagedList(quotes),
+  'GET /timesheets/entries': pagedList([
+    { id: 'E1', date: '2026-10-01', hours: 8, user: { id: 'U1', givenName: 'Tom', familyName: 'B' } },
+    { id: 'E2', date: '2026-10-01', hours: 7.5, user: { id: 'U2', givenName: 'Ann', familyName: 'K' } }
+  ]),
   'GET /clients': (call) => ({ body: { count: 2, page: { number: 1, size: Number(call.query.limit), count: 1 }, items: [{ id: 'C1', name: 'Smith, Jo', individual: true, _links: { api: '/clients/C1' } }, { id: 'C2', name: 'Lee Pty Ltd', individual: false }] } }),
   'GET /tasks/T50': () => ({
     body: { id: 'T50', jobNumber: 1100, name: 'Front garden', status: 'In Progress', client: { id: 'C1', name: 'Smith, Jo', _links: {} }, description: '<p>Build the wall</p>', resources: [{ id: 'U1', name: 'Tom B' }] }
@@ -105,6 +123,15 @@ describe('aroflo_get', () => {
     expect((await call('aroflo_get', { path: '/tasks?limit=2' })).text).not.toContain('hint:');
   });
 
+  it('warns when a timesheet query leaves out endDate, because AroFlo then returns one day', async () => {
+    const { call } = setup();
+    const day = await call('aroflo_get', { path: '/timesheets/entries?subzone=TASK_TIMESHEETS&entryDate=2026-10-01' });
+    expect(day.text).toMatch(/\nhint: No endDate, so this is one day only: endDate defaults to entryDate\.$/);
+    expect(day.text).not.toContain('Rows carry no task');
+    const month = await call('aroflo_get', { path: '/timesheets/entries?subzone=TASK_TIMESHEETS&entryDate=2026-10-01&endDate=2026-10-31' });
+    expect(month.text).not.toContain('hint:');
+  });
+
   it('takes limit on lists AroFlo does not page, and bounds raw array responses', async () => {
     const { call } = setup();
     const m = await call('aroflo_get', { path: '/tasks/T50/labours?limit=2' });
@@ -180,6 +207,13 @@ describe('aroflo_api', () => {
     const r = await call('aroflo_api', { q: 'GET /timesheets/entries' });
     expect(r.text).toMatch(/subzone\* \(TASK_TIMESHEETS\|OVERHEAD_TIMESHEETS\|EXPENSE_TIMESHEETS\)/);
     expect(r.text).toContain('default fields: id,date,hours,user,workType,trackingCentre,note');
+    expect(r.text).toContain('hint: No endDate, so this is one day only');
+    expect(r.text).toContain('hint: Rows carry no task. For one job add taskId=');
+  });
+
+  it('names the task-type filter, which the spec calls a service id', async () => {
+    const { call } = setup();
+    expect((await call('aroflo_api', { q: 'GET /tasks' })).text).toContain('hint: serviceId=<id from /types/tasks> filters by task type.');
   });
 
   it('shows body fields for a write endpoint and says when it is not enabled', async () => {
@@ -218,19 +252,36 @@ describe('aroflo_quote', () => {
     const r = await call('aroflo_quote', { quote: '3030' });
     expect(r.isError).toBe(false);
     expect(r.text).toContain('acceptanceStatus: Awaiting Decision');
-    expect(r.text).toContain('totals: total 9900, tax 900, taxInclusive true');
+    expect(r.text).toContain('totals: total 9900, tax 900, taxInclusive true\nlabour hours: 30\nsections (1):');
     expect(r.text).not.toContain('forms');
     expect(r.text).toContain('sections (1):\nid\tname\ttotalInc\tlabourHours\nK1\tHARDSCAPES\t9900\t30');
     expect(r.text).toContain('lines: 2 top-level of 3 (lines=true lists all)');
     expect(r.text).not.toContain('Sandstone');
+    const hours = column(r.text, 'labourHours');
+    expect(hours.get('Retaining wall')).toBe('30');
+    expect(hours.get('Lighting')).toBe('');
   });
 
-  it('lines=true lists every line by section, children marked', async () => {
+  it('lines=true lists every line by section, children marked, hours on top-level lines only', async () => {
     const { call } = setup();
     const r = await call('aroflo_quote', { quote: 'Q10', lines: true });
     expect(r.text).toContain('## HARDSCAPES (3 lines)');
     expect(r.text).toContain('- Sandstone block');
     expect(r.text).toMatch(/Lighting.*\tyes$/m);
+    const hours = column(r.text, 'labourHours');
+    expect(hours.get('Retaining wall')).toBe('30');
+    expect(hours.get('- Sandstone block')).toBe('');
+  });
+
+  it('leaves out the labour hours line when no section reports hours', async () => {
+    const f = fakeFetch({
+      ...routes,
+      'GET /quotes/Q10/takeoffs': () => ({ body: { count: 1, page: { number: 1, size: 100, count: 1 }, items: [{ id: 'K1', name: 'HARDSCAPES', breakdown: { totalInc: 9900 } }] } })
+    });
+    const cfg = testConfig();
+    const r = await callTool(toolsFor(cfg), 'aroflo_quote', { quote: 'Q10' }, makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)));
+    expect(r.isError).toBe(false);
+    expect(r.text).not.toContain('labour hours:');
   });
 });
 
