@@ -29,6 +29,7 @@ const NOT_SENT: Record<Exclude<DialogAnswer, 'send'>, string> = {
   decline:
     "Not sent: the confirm dialog came back declined. If the user saw no dialog, the client declined it by itself (Codex can do this when set to never ask for approval, as in Full Access), so they need a setting that asks. Don't retry without asking the user.",
   'kept-false': 'Not sent: the dialog was accepted with "Send to AroFlo" left on False. If the user meant to send it, call again and they choose True.',
+  'no-choice': 'Not sent: the dialog was accepted without a "Send to AroFlo" choice. If the user meant to send it, call again and they choose True.',
   cancel: 'Not sent: the confirm dialog was closed without an answer.',
   timeout: `Not sent: the confirm dialog got no answer within ${DIALOG_TIMEOUT_MS / 60_000} minutes.`
 };

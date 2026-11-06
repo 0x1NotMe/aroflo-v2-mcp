@@ -78,7 +78,7 @@ export function createServer(deps: Deps): Server {
           throw err;
         });
       if (r === 'timeout') return r;
-      if (r.action === 'accept') return r.content?.send === true ? 'send' : 'kept-false';
+      if (r.action === 'accept') return r.content?.send === true ? 'send' : r.content?.send === false ? 'kept-false' : 'no-choice';
       return r.action === 'decline' ? 'decline' : 'cancel';
     };
   const current = () => toolsFor(deps.cfg, canAsk() ? 'dialog' : 'code');
