@@ -449,6 +449,7 @@ describe('aroflo_write (dialog mode: client with MCP elicitation, e.g. Codex)', 
   it.each<[Exclude<DialogAnswer, 'send'>, RegExp]>([
     ['decline', /^Not sent: the confirm dialog came back declined\. If the user saw no dialog, the client declined it by itself .*Don't retry without asking the user\.$/],
     ['kept-false', /^Not sent: the dialog was accepted with "Send to AroFlo" left on False\. If the user meant to send it, call again and they choose True\.$/],
+    ['no-choice', /^Not sent: the dialog was accepted without a "Send to AroFlo" choice\. If the user meant to send it, call again and they choose True\.$/],
     ['cancel', /^Not sent: the confirm dialog was closed without an answer\.$/],
     ['timeout', /^Not sent: the confirm dialog got no answer within 10 minutes\.$/]
   ])('sends nothing on %s, and says what happened', async (answer, text) => {

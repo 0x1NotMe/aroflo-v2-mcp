@@ -60,7 +60,7 @@ describe('MCP protocol', () => {
   it.each<[string, ElicitResult, RegExp]>([
     ['declined, which may mean the client declined it by itself', { action: 'decline' }, /^Not sent: the confirm dialog came back declined\. If the user saw no dialog, the client declined it by itself/],
     ['accepted with Send left on false', { action: 'accept', content: { send: false } }, /^Not sent: the dialog was accepted with "Send to AroFlo" left on False\./],
-    ['accepted with no answer at all', { action: 'accept' }, /^Not sent: the dialog was accepted with "Send to AroFlo" left on False\./],
+    ['accepted with no answer at all', { action: 'accept' }, /^Not sent: the dialog was accepted without a "Send to AroFlo" choice\./],
     ['closed', { action: 'cancel' }, /^Not sent: the confirm dialog was closed without an answer\.$/]
   ])('sends nothing when the dialog is %s, and says so', async (_, result, text) => {
     const c = await connect(writes, () => result);

@@ -5,8 +5,8 @@ import type { AroFloHttp } from '../http.js';
 import type { JobIndex } from '../jobs.js';
 import { UsageError } from '../request.js';
 
-/** How a confirm dialog ended: True chosen and accepted, accepted with Send left on False, declined, closed, or no answer in time. */
-export type DialogAnswer = 'send' | 'kept-false' | 'decline' | 'cancel' | 'timeout';
+/** How a confirm dialog ended: True chosen and accepted, accepted with Send left on False, accepted with no choice at all, declined, closed, or no answer in time. */
+export type DialogAnswer = 'send' | 'kept-false' | 'no-choice' | 'decline' | 'cancel' | 'timeout';
 
 export interface Deps {
   cfg: Config;
