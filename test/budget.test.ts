@@ -4,7 +4,8 @@ import { INSTRUCTIONS, toolsFor } from '../src/server.js';
 import { testConfig } from './helpers.js';
 
 // Every MCP client sends the tool list to the model on every turn. v1 (aroflo-mcp) cost ~26,000 tokens
-// per turn for 51 tools; these caps keep v2 near 500. Raising a cap needs a reason in the commit message.
+// per turn for 51 tools; these caps keep v2 near 500 read-only and 700 with writes, which is the default.
+// Raising a cap needs a reason in the commit message.
 const CAP_READ_ONLY = 560;
 const CAP_WITH_WRITES = 740;
 const CAP_PER_TOOL = 200;
@@ -19,7 +20,11 @@ describe('token budget', () => {
     expect(cost([]).total).toBeLessThanOrEqual(CAP_READ_ONLY);
   });
 
-  it(`tools/list with writes enabled stays under ${CAP_WITH_WRITES} tokens`, () => {
+  it(`the default tools/list, all writes on, stays under ${CAP_WITH_WRITES} tokens`, () => {
+    expect(cost(['*']).total).toBeLessThanOrEqual(CAP_WITH_WRITES);
+  });
+
+  it(`tools/list with a list of writes stays under ${CAP_WITH_WRITES} tokens`, () => {
     expect(cost(['Notes', 'Clients']).total).toBeLessThanOrEqual(CAP_WITH_WRITES);
   });
 

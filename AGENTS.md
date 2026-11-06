@@ -1,6 +1,6 @@
 # aroflo-v2-mcp
 
-Stdio MCP server for the AroFlo API v2 (`https://api.aroflo.com/v2`). The API is an open beta and AroFlo ships breaking changes most weeks. The main client is Codex, used on a limited subscription, so every token the server adds to a model's context counts.
+Stdio MCP server for the AroFlo API v2 (`https://api.aroflo.com/v2`). The API is an open beta and AroFlo ships breaking changes most weeks. MCP clients such as Codex and Claude Code send the tool list to the model on every turn, and many users are on limited plans, so every token the server adds to a model's context counts.
 
 ## Commands
 
@@ -29,7 +29,7 @@ Debugging: `AROFLO_V2_DEBUG=1` logs one line per request (operation template, st
 
 ## Safety
 
-- The server is read-only unless `AROFLO_V2_WRITE_OPS` names operations. Clients with MCP elicitation (Codex) confirm each write in a dialog the model can't answer. Other clients get a preview and a single-use code, and their own approval prompt must stay on for `aroflo_write`.
+- Writes are on by default. `AROFLO_V2_READ_ONLY` turns them off, and an unknown value counts as read-only. `AROFLO_V2_WRITE_OPS` limits them, and set but empty means none. Clients with MCP elicitation (Codex) confirm each write in a dialog the model can't answer. Other clients get a preview and a single-use code, and their own approval prompt must stay on for `aroflo_write`. The live smoke test always runs read-only.
 - AroFlo has no API delete except for schedules. A test record has to be removed by hand in the AroFlo UI, so live writes happen only when Gerd asks, on records named `ZZ ... (delete me)`.
 - Never print, log or commit a token. Tests and fixtures use synthetic data only, with no real AroFlo records, ids, names or counts.
 - A 401, or a 404 on a collection path that worked before, usually means the token was revoked or rotated. Report it and stop calling. Don't retry in a loop.

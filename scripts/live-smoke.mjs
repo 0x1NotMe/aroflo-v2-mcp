@@ -8,9 +8,11 @@ import { makeDeps } from '../dist/deps.js';
 import { callTool, toolsFor } from '../dist/server.js';
 
 const show = process.argv.includes('--show');
+// Writes are on by default; this test only reads, so it runs the server read-only.
+process.env.AROFLO_V2_READ_ONLY = '1';
 const deps = makeDeps();
 if (deps.cfg.writeOps.length) {
-  console.error('refusing to run with AROFLO_V2_WRITE_OPS set: the smoke test is read-only');
+  console.error('refusing to run with writes on: the smoke test is read-only');
   process.exit(2);
 }
 const tools = toolsFor(deps.cfg);

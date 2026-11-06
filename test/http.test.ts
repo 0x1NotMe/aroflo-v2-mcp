@@ -13,7 +13,7 @@ function brokenBody(status = 200): Response {
 describe('AroFloHttp', () => {
   it('refuses writes on a read-only server, and unconfirmed writes anywhere, before any call', async () => {
     const f = fakeFetch({ 'POST /clients': { status: 201, body: {} } });
-    await expect(new AroFloHttp(testConfig(), f.fn, noSleep).request('POST', '/clients', { body: {}, confirmedWrite: true })).rejects.toThrow(/Writes are disabled/);
+    await expect(new AroFloHttp(testConfig(), f.fn, noSleep).request('POST', '/clients', { body: {}, confirmedWrite: true })).rejects.toThrow(/Writes are off/);
     await expect(new AroFloHttp(writable, f.fn, noSleep).request('PATCH', '/clients/C1', { body: {} })).rejects.toThrow(/unconfirmed write/);
     expect(f.calls).toHaveLength(0);
   });

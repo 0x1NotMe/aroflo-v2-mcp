@@ -154,7 +154,7 @@ const baseSchema = {
  *   here, so it must stay on for aroflo_write.
  */
 export function makeWriteTool(cfg: Config, mode: 'dialog' | 'code'): Tool {
-  const enabled = cfg.writeOps.join(', ');
+  const enabled = cfg.writeOps.includes('*') ? 'all write endpoints' : cfg.writeOps.join(', ');
   const def: ToolDef =
     mode === 'dialog'
       ? {

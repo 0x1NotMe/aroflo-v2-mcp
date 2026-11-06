@@ -18,7 +18,8 @@ if (arg === '--version') {
   process.stdout.write(`aroflo-v2-mcp ${VERSION} (AroFlo API ${deps.catalog.version}, spec ${deps.catalog.specSha})\n`);
 } else if (arg === '--check') {
   // Setup and rotation check: one read-only call, never prints the token.
-  const writes = deps.cfg.writeOps.length ? `on for ${deps.cfg.writeOps.join(', ')}` : 'off (read-only)';
+  const ops = deps.cfg.writeOps;
+  const writes = !ops.length ? 'off (read-only)' : `on for ${ops.includes('*') ? 'all write endpoints' : ops.join(', ')}, each one confirmed`;
   try {
     // Always a real authenticated read, even when a business unit id is configured.
     await deps.http.request('GET', '/businessunits', { query: { _fields: 'id', limit: '1' }, collection: true, template: 'GET /businessunits' });

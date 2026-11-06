@@ -1,7 +1,7 @@
 {
   "name": "aroflo-v2-mcp",
   "version": "0.1.0",
-  "description": "Unofficial, token-lean, read-only-by-default MCP server for the AroFlo API v2",
+  "description": "Unofficial, token-lean MCP server for the AroFlo API v2, with every write confirmed by the user",
   "license": "MIT",
   "private": true,
   "type": "module",
