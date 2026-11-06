@@ -108,7 +108,8 @@ All settings are environment variables in the MCP server config.
 
 Writes are on by default, and each write needs a confirmation before anything is sent:
 
-- In clients with MCP confirm dialogs, such as Codex, each `aroflo_write` call opens a dialog showing the exact request. Nothing is sent unless you accept it there, and the model can't answer the dialog.
+- In clients with MCP confirm dialogs, such as Codex, each `aroflo_write` call opens a dialog showing the exact request and a "Send to AroFlo" choice that starts on false. Nothing is sent unless you set it to true and accept, and the model can't answer the dialog. The dialog waits up to 10 minutes. The choice is there because Codex accepts a dialog without fields by itself when it isn't asking for approval.
+- Codex 0.166 declines the dialog by itself, without showing it, when it is set to never ask for approval, as in its Full Access setting. The tool then reports the decline and says that no dialog may have appeared. Use a setting that asks for approval, such as Default, to make changes.
 - In clients without confirm dialogs, the first call returns a preview and a one-time code, and the model has to call again with the code. There the client's own approval prompt for `aroflo_write` is the only human check. If the client approves tool calls by itself, through an auto-approve setting or a session that bypasses permissions, the model can confirm its own writes. Keep that prompt on for `aroflo_write`, or run the server read-only. Limiting writes with `AROFLO_V2_WRITE_OPS` narrows what can change, but it doesn't bring the human check back.
 
 To run it read-only, add `AROFLO_V2_READ_ONLY = "1"` to `env`. To allow only some writes, list them instead:

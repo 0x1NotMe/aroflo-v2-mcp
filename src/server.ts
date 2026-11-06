@@ -8,8 +8,8 @@ import { apiTool } from './tools/api.js';
 import { getTool } from './tools/get.js';
 import { jobTool } from './tools/job.js';
 import { quoteTool } from './tools/quote.js';
-import type { Deps, Tool } from './tools/types.js';
-import { makeWriteTool } from './tools/write.js';
+import type { DialogAnswer, Deps, Tool } from './tools/types.js';
+import { DIALOG_TIMEOUT_MS, makeWriteTool } from './tools/write.js';
 import { VERSION } from './version.js';
 
 export const INSTRUCTIONS =
@@ -58,17 +58,29 @@ export function createServer(deps: Deps): Server {
   const debugFile = process.env.AROFLO_V2_DEBUG_FILE;
   if (debugFile) server.oninitialized = () => writeFileSync(debugFile, `${JSON.stringify({ client: server.getClientVersion(), capabilities: server.getClientCapabilities() })}\n`);
   const canAsk = () => server.getClientCapabilities()?.elicitation !== undefined;
-  const askUser = (signal?: AbortSignal) => async (message: string) => {
-    const r = await server.elicitInput(
-      {
-        mode: 'form',
-        message,
-        requestedSchema: { type: 'object', properties: { send: { type: 'boolean', title: 'Send to AroFlo', default: false } }, required: ['send'] }
-      },
-      { signal }
-    );
-    return r.action === 'accept' && r.content?.send === true;
-  };
+  // The required "send" field is deliberate. Codex accepts a dialog without fields by itself when it
+  // isn't asking for approval, and starting on false means only a person choosing True sends.
+  const askUser =
+    (signal?: AbortSignal) =>
+    async (message: string): Promise<DialogAnswer> => {
+      const r = await server
+        .elicitInput(
+          {
+            mode: 'form',
+            message,
+            requestedSchema: { type: 'object', properties: { send: { type: 'boolean', title: 'Send to AroFlo', default: false } }, required: ['send'] }
+          },
+          { signal, timeout: DIALOG_TIMEOUT_MS }
+        )
+        .catch((err: unknown) => {
+          // The SDK reports an abort as a timeout too, so only a live call has timed out.
+          if (err instanceof McpError && err.code === ErrorCode.RequestTimeout && !signal?.aborted) return 'timeout' as const;
+          throw err;
+        });
+      if (r === 'timeout') return r;
+      if (r.action === 'accept') return r.content?.send === true ? 'send' : 'kept-false';
+      return r.action === 'decline' ? 'decline' : 'cancel';
+    };
   const current = () => toolsFor(deps.cfg, canAsk() ? 'dialog' : 'code');
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: current().map((t) => t.def) }));
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {

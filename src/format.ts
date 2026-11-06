@@ -6,7 +6,8 @@ export type Obj = Record<string, unknown>;
 
 /** Keys that never help a model: hypermedia links and generated avatar image URLs. */
 const DROP = new Set(['_links', 'avatar']);
-const LABEL_KEYS = ['name', 'fullName', 'displayName', 'title', 'label', 'description', 'value', 'code'];
+// content last: task notes nest their text as note.content, and a note's text says more than its id.
+const LABEL_KEYS = ['name', 'fullName', 'displayName', 'title', 'label', 'description', 'value', 'code', 'content'];
 const FIRST = ['id', 'jobNumber', 'number', 'name'];
 
 export const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);

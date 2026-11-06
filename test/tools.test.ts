@@ -6,6 +6,7 @@ import type { Config } from '../src/config.js';
 import { makeDeps } from '../src/deps.js';
 import { AroFloHttp } from '../src/http.js';
 import { callTool, toolsFor } from '../src/server.js';
+import type { DialogAnswer } from '../src/tools/types.js';
 import { type Call, fakeFetch, noSleep, pagedList, type Reply, testConfig, TOKEN } from './helpers.js';
 
 // Synthetic data only: no real AroFlo records.
@@ -155,6 +156,13 @@ describe('aroflo_get', () => {
     const r = await call('aroflo_get', { path: '/tasks/T1/assets?page=2&limit=5' });
     expect(f.calls.at(-1)!.query).toMatchObject({ page: '2', limit: '5' });
     expect(r.text).toMatch(/^A5\t/m);
+  });
+
+  it('shows the text of task notes, not the id of the nested note', async () => {
+    const { call } = setup();
+    const r = await call('aroflo_get', { path: '/tasks/T50/notes' });
+    expect(r.text).toContain('Gate code 1234');
+    expect(r.text).toContain('Older note');
   });
 
   it('bounds an items envelope that carries other keys too', async () => {
@@ -417,7 +425,7 @@ describe('aroflo_write (code mode: client without confirm dialogs)', () => {
 });
 
 describe('aroflo_write (dialog mode: client with MCP elicitation, e.g. Codex)', () => {
-  function dialogSetup(answer: boolean) {
+  function dialogSetup(answer: DialogAnswer) {
     const f = fakeFetch(routes);
     const cfg = testConfig({ writeOps: ['Clients'] });
     const asked: string[] = [];
@@ -427,29 +435,59 @@ describe('aroflo_write (dialog mode: client with MCP elicitation, e.g. Codex)', 
   }
 
   it('has no confirm parameter: the user answers a dialog the model cannot see', () => {
-    const def = dialogSetup(true).tools.find((t) => t.def.name === 'aroflo_write')!.def;
+    const def = dialogSetup('send').tools.find((t) => t.def.name === 'aroflo_write')!.def;
     expect(Object.keys(def.inputSchema.properties)).toEqual(['method', 'path', 'body']);
   });
 
-  it('sends only after the user accepts, showing the exact request', async () => {
-    const yes = dialogSetup(true);
+  it('sends only after the user chooses to send, showing the exact request', async () => {
+    const yes = dialogSetup('send');
     expect((await yes.call({ method: 'PATCH', path: '/clients/C1', body: { individual: true } })).text).toMatch(/^sent: /);
     expect(yes.asked[0]).toContain('PATCH /clients/C1');
     expect(yes.asked[0]).toContain('"individual": true');
-    const no = dialogSetup(false);
-    expect((await no.call({ method: 'PATCH', path: '/clients/C1', body: { individual: true } })).text).toBe('Not sent: the user declined.');
-    expect(no.f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
+  });
+
+  it.each<[Exclude<DialogAnswer, 'send'>, RegExp]>([
+    ['decline', /^Not sent: the confirm dialog came back declined\. If the user saw no dialog, the client declined it by itself .*Don't retry without asking the user\.$/],
+    ['kept-false', /^Not sent: the dialog was accepted with "Send to AroFlo" left on False\. If the user meant to send it, call again and they choose True\.$/],
+    ['cancel', /^Not sent: the confirm dialog was closed without an answer\.$/],
+    ['timeout', /^Not sent: the confirm dialog got no answer within 10 minutes\.$/]
+  ])('sends nothing on %s, and says what happened', async (answer, text) => {
+    const s = dialogSetup(answer);
+    expect((await s.call({ method: 'PATCH', path: '/clients/C1', body: { individual: true } })).text).toMatch(text);
+    expect(s.f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
   });
 });
 
 describe('cancellation', () => {
+  it('reports a dialog that fails for another reason, and sends nothing', async () => {
+    const f = fakeFetch(routes);
+    const cfg = testConfig({ writeOps: ['Clients'] });
+    const deps = { ...makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)), askUser: async () => Promise.reject(new Error('no UI')) };
+    const r = await callTool(toolsFor(cfg, 'dialog'), 'aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: true } }, deps);
+    expect(r.text).toBe('Not sent: the confirm dialog failed (no UI).');
+    expect(f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
+  });
+
   it('sends nothing when the client cancels the call before the write goes out', async () => {
     const f = fakeFetch(routes);
     const cfg = testConfig({ writeOps: ['Clients'] });
     const ac = new AbortController();
-    const deps = { ...makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)), askUser: async () => (ac.abort(), true), signal: ac.signal };
+    const deps = { ...makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)), askUser: async () => (ac.abort(), 'send' as const), signal: ac.signal };
     const r = await callTool(toolsFor(cfg, 'dialog'), 'aroflo_write', { method: 'PATCH', path: '/clients/C1', body: { individual: true } }, deps);
     expect(r.text).toBe('Cancelled: nothing was sent.');
+    expect(f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
+  });
+
+  it('says cancelled, not timed out or failed, when the client cancels while the dialog is open', async () => {
+    const f = fakeFetch(routes);
+    const cfg = testConfig({ writeOps: ['Clients'] });
+    const args = { method: 'PATCH', path: '/clients/C1', body: { individual: true } };
+    const run = (askUser: () => Promise<DialogAnswer>, ac: AbortController) =>
+      callTool(toolsFor(cfg, 'dialog'), 'aroflo_write', args, { ...makeDeps(cfg, new AroFloHttp(cfg, f.fn, noSleep)), askUser, signal: ac.signal });
+    const thrown = new AbortController();
+    expect((await run(async () => (thrown.abort(), Promise.reject(new Error('Request timed out'))), thrown)).text).toBe('Cancelled: nothing was sent.');
+    const answered = new AbortController();
+    expect((await run(async () => (answered.abort(), 'timeout' as const), answered)).text).toBe('Cancelled: nothing was sent.');
     expect(f.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
   });
 });

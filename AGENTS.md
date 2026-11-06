@@ -29,7 +29,7 @@ Debugging: `AROFLO_V2_DEBUG=1` logs one line per request (operation template, st
 
 ## Safety
 
-- Writes are on by default. `AROFLO_V2_READ_ONLY` turns them off, and an unknown value counts as read-only. `AROFLO_V2_WRITE_OPS` limits them, and set but empty means none. Clients with MCP elicitation (Codex) confirm each write in a dialog the model can't answer. Other clients get a preview and a single-use code, and their own approval prompt must stay on for `aroflo_write`. The live smoke test always runs read-only.
+- Writes are on by default. `AROFLO_V2_READ_ONLY` turns them off, and an unknown value counts as read-only. `AROFLO_V2_WRITE_OPS` limits them, and set but empty means none. Clients with MCP elicitation (Codex) confirm each write in a dialog the model can't answer. Keep the dialog's required `send` field that starts on false, because Codex accepts a dialog without fields by itself when it isn't asking for approval. Other clients get a preview and a single-use code, and their own approval prompt must stay on for `aroflo_write`. The live smoke test always runs read-only.
 - AroFlo has no API delete except for schedules. A test record has to be removed by hand in the AroFlo UI, so live writes happen only when Gerd asks, on records named `ZZ ... (delete me)`.
 - Never print, log or commit a token. Tests and fixtures use synthetic data only, with no real AroFlo records, ids, names or counts.
 - A 401, or a 404 on a collection path that worked before, usually means the token was revoked or rotated. Report it and stop calling. Don't retry in a loop.
