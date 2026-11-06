@@ -1,6 +1,6 @@
 # aroflo-v2-mcp
 
-An MCP server for the AroFlo API v2. It runs as a local (stdio) server in any MCP client, such as Codex or Claude Code. It reads and writes, and every write needs your OK before anything is sent; you can also run it read-only. It keeps what it sends to the model small: the tool definitions cost about 670 tokens per turn, or about 510 read-only, where the v1 server (`aroflo-mcp`, 51 tools) cost about 26,000.
+An MCP server for the AroFlo API v2. It runs as a local (stdio) server in any MCP client, such as Codex or Claude Code. It reads and writes, with a confirmation step before each write is sent (see [Writes](#writes)), and it can run read-only. It keeps what it sends to the model small: the tool definitions cost about 670 tokens per turn, or about 510 read-only, where the v1 server (`aroflo-mcp`, 51 tools) cost about 26,000.
 
 **Unofficial.** This is an independent project. It is not made, endorsed or supported by AroFlo, and it has no affiliation with AroFlo Innovations Pty Ltd. AroFlo® is a trademark of AroFlo Innovations Pty Ltd. The server connects to AroFlo through API v2, which is in open beta and changes most weeks. You run it with your own AroFlo API credentials, under your own [API Licence Agreement](https://aroflo.com/policies/api-terms-of-use-policy) with AroFlo. It comes with no warranty: check what it reads, and above all what it writes, before you rely on it.
 
@@ -12,7 +12,7 @@ An MCP server for the AroFlo API v2. It runs as a local (stdio) server in any MC
 | `aroflo_quote` | One quote in one call: header, totals, labour hours, sections and top-level lines with each line's labour hours. `lines=true` lists every line by section. Takes a job number or quote id. |
 | `aroflo_get` | Any read endpoint as a path with a query, for example `/clients?name.like=smith` or `/tasks?status=1&serviceId=<task type id>`. Returns 25 rows by default as a compact table. |
 | `aroflo_api` | Finds endpoints and shows one endpoint's filters, fields and rules. The model uses it only when it doesn't know a path. |
-| `aroflo_write` | Creates or changes records, each one only after you confirm it. Not there when the server runs read-only. See [Writes](#writes). |
+| `aroflo_write` | Creates or changes records, each one after a confirmation step. Not there when the server runs read-only. See [Writes](#writes). |
 
 ## Setup
 
@@ -106,10 +106,10 @@ All settings are environment variables in the MCP server config.
 
 ## Writes
 
-Writes are on by default, and every write needs the user's OK before anything is sent:
+Writes are on by default, and each write needs a confirmation before anything is sent:
 
 - In clients with MCP confirm dialogs, such as Codex, each `aroflo_write` call opens a dialog showing the exact request. Nothing is sent unless you accept it there, and the model can't answer the dialog.
-- In clients without confirm dialogs, the first call returns a preview and a one-time code, and the model has to call again with the code. There the client's own approval prompt for `aroflo_write` is the only human check. If the client approves tool calls by itself, through an auto-approve setting or a session that bypasses permissions, the model can confirm its own writes. Run the server read-only there, or limit what it may write.
+- In clients without confirm dialogs, the first call returns a preview and a one-time code, and the model has to call again with the code. There the client's own approval prompt for `aroflo_write` is the only human check. If the client approves tool calls by itself, through an auto-approve setting or a session that bypasses permissions, the model can confirm its own writes. Keep that prompt on for `aroflo_write`, or run the server read-only. Limiting writes with `AROFLO_V2_WRITE_OPS` narrows what can change, but it doesn't bring the human check back.
 
 To run it read-only, add `AROFLO_V2_READ_ONLY = "1"` to `env`. To allow only some writes, list them instead:
 

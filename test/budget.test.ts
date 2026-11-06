@@ -1,5 +1,6 @@
 import { encode } from 'gpt-tokenizer';
 import { describe, expect, it } from 'vitest';
+import { type Config, loadConfig } from '../src/config.js';
 import { INSTRUCTIONS, toolsFor } from '../src/server.js';
 import { testConfig } from './helpers.js';
 
@@ -10,25 +11,31 @@ const CAP_READ_ONLY = 560;
 const CAP_WITH_WRITES = 740;
 const CAP_PER_TOOL = 200;
 
-const cost = (writeOps: string[]) => {
-  const defs = toolsFor(testConfig({ writeOps })).map((t) => t.def);
+const MODES = ['code', 'dialog'] as const;
+
+const costOf = (cfg: Config, mode: (typeof MODES)[number] = 'code') => {
+  const defs = toolsFor(cfg, mode).map((t) => t.def);
   return { defs, total: encode(JSON.stringify(defs)).length + encode(INSTRUCTIONS).length };
 };
+const cost = (writeOps: string[], mode: (typeof MODES)[number] = 'code') => costOf(testConfig({ writeOps }), mode);
 
 describe('token budget', () => {
   it(`read-only tools/list stays under ${CAP_READ_ONLY} tokens`, () => {
     expect(cost([]).total).toBeLessThanOrEqual(CAP_READ_ONLY);
   });
 
-  it(`the default tools/list, all writes on, stays under ${CAP_WITH_WRITES} tokens`, () => {
-    expect(cost(['*']).total).toBeLessThanOrEqual(CAP_WITH_WRITES);
+  it(`the default config (all writes on) stays under ${CAP_WITH_WRITES} tokens in both confirm modes`, () => {
+    const defaults = loadConfig({ AROFLO_V2_API_KEY: 'x' }, () => {});
+    expect(defaults.writeOps).toEqual(['*']);
+    for (const mode of MODES) expect(costOf(defaults, mode).total, mode).toBeLessThanOrEqual(CAP_WITH_WRITES);
   });
 
-  it(`tools/list with a list of writes stays under ${CAP_WITH_WRITES} tokens`, () => {
-    expect(cost(['Notes', 'Clients']).total).toBeLessThanOrEqual(CAP_WITH_WRITES);
+  it(`tools/list with a list of writes stays under ${CAP_WITH_WRITES} tokens in both confirm modes`, () => {
+    for (const mode of MODES) expect(cost(['Notes', 'Clients'], mode).total, mode).toBeLessThanOrEqual(CAP_WITH_WRITES);
   });
 
   it(`no single tool costs more than ${CAP_PER_TOOL} tokens`, () => {
-    for (const def of cost(['Notes', 'Clients']).defs) expect(encode(JSON.stringify(def)).length, def.name).toBeLessThanOrEqual(CAP_PER_TOOL);
+    for (const mode of MODES)
+      for (const def of cost(['*'], mode).defs) expect(encode(JSON.stringify(def)).length, `${mode} ${def.name}`).toBeLessThanOrEqual(CAP_PER_TOOL);
   });
 });
