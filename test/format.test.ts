@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { cell, clean, cut, plainText, record, render, shortDate, table } from '../src/format.js';
 
+describe('cell', () => {
+  it("shows a nested note's text, not its id", () => {
+    expect(cell({ id: 'N1', content: '<p>Gate code&nbsp;1234</p>' })).toBe('Gate code 1234');
+  });
+  it('still prefers a name over content', () => {
+    expect(cell({ id: 'D1', name: 'Plan.pdf', content: 'raw file text' })).toBe('Plan.pdf');
+  });
+});
+
 describe('clean', () => {
   it('drops _links, nulls and empty values recursively', () => {
     expect(clean({ id: 'A', _links: { api: '/x' }, a: null, b: '', c: [], d: {}, e: { f: null, g: 1 }, h: '  ' })).toEqual({ id: 'A', e: { g: 1 } });

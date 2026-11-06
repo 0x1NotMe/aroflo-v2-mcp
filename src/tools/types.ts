@@ -5,6 +5,9 @@ import type { AroFloHttp } from '../http.js';
 import type { JobIndex } from '../jobs.js';
 import { UsageError } from '../request.js';
 
+/** How a confirm dialog ended: True chosen and accepted, accepted with Send left on False, declined, closed, or no answer in time. */
+export type DialogAnswer = 'send' | 'kept-false' | 'decline' | 'cancel' | 'timeout';
+
 export interface Deps {
   cfg: Config;
   catalog: ApiCatalog;
@@ -12,7 +15,7 @@ export interface Deps {
   ctx: SessionContext;
   jobs: JobIndex;
   /** Ask the user to approve, outside the model (MCP elicitation). Present only when the client supports it. */
-  askUser?: (message: string) => Promise<boolean>;
+  askUser?: (message: string) => Promise<DialogAnswer>;
   /** Cancellation of the current tool call, from the MCP client. */
   signal?: AbortSignal;
 }

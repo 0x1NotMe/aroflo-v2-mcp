@@ -8,7 +8,7 @@ import { isObj, render } from '../format.js';
 import { ApiError } from '../http.js';
 import { buildQuery, resolveTarget, UsageError } from '../request.js';
 import { writeAllowed } from '../writes.js';
-import { type Deps, str, type Tool, type ToolDef } from './types.js';
+import { type DialogAnswer, type Deps, str, type Tool, type ToolDef } from './types.js';
 
 // ajv is CommonJS: under NodeNext the default import is module.exports, whose `.default` is the class.
 const Ajv2020 = _Ajv2020.default;
@@ -17,6 +17,21 @@ const validators = new Map<string, ValidateFunction>();
 
 const WRITE_METHODS = new Set<Method>(['POST', 'PATCH', 'PUT', 'DELETE']);
 const TTL_MS = 10 * 60_000;
+/**
+ * How long a confirm dialog waits for the user. The MCP SDK gives up after 60 seconds by default, too
+ * short to read a long request. Codex pauses its own tool timeout while a dialog is open, so this is
+ * the limit the user sees.
+ */
+export const DIALOG_TIMEOUT_MS = 10 * 60_000;
+const CANCELLED = 'Cancelled: nothing was sent.';
+/** What the model hears when a dialog ends without "send". Each says what happened, so it never blames the user for a dialog they didn't see. */
+const NOT_SENT: Record<Exclude<DialogAnswer, 'send'>, string> = {
+  decline:
+    "Not sent: the confirm dialog came back declined. If the user saw no dialog, the client declined it by itself (Codex can do this when set to never ask for approval, as in Full Access), so they need a setting that asks. Don't retry without asking the user.",
+  'kept-false': 'Not sent: the dialog was accepted with "Send to AroFlo" left on False. If the user meant to send it, call again and they choose True.',
+  cancel: 'Not sent: the confirm dialog was closed without an answer.',
+  timeout: `Not sent: the confirm dialog got no answer within ${DIALOG_TIMEOUT_MS / 60_000} minutes.`
+};
 /** Opaque AroFlo ids only in write paths, so a path (and the audit log) never carries free text. */
 const OPAQUE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** Confirm codes: random per preview, bound to the request digest, single use. */
@@ -100,7 +115,7 @@ function describeRequest(p: Prepared, pretty: boolean): string {
 async function send(p: Prepared, d: Deps): Promise<string> {
   const bodySha256 = p.body === undefined ? undefined : createHash('sha256').update(canonical(p.body)).digest('hex');
   try {
-    if (d.signal?.aborted) return 'Cancelled: nothing was sent.';
+    if (d.signal?.aborted) return CANCELLED;
     const res = await d.http.request(p.method, p.path, { query: p.query, body: p.body, confirmedWrite: true, template: p.op.k, signal: d.signal });
     const warn = audit(d.cfg.auditLog, { ts: new Date().toISOString(), op: p.op.k, path: p.path, status: res.status, outcome: 'ok', bodySha256, ids: idsIn(res.data) });
     const tail = warn ? `\n(${warn})` : '';
@@ -148,7 +163,8 @@ const baseSchema = {
 /**
  * Two ways to get the user's OK, chosen per client at connect time:
  * - dialog: the client supports MCP elicitation (Codex does). One call; the server asks the user
- *   directly in a confirm dialog showing the exact request. The model cannot answer it.
+ *   directly in a confirm dialog showing the exact request. The model cannot answer it. Only a
+ *   "send" answer sends; every other ending says what happened (see NOT_SENT).
  * - code: no elicitation. The first call returns the full request and a single-use code; the model
  *   must show it and pass the code back. The client's own tool-approval prompt is the human gate
  *   here, so it must stay on for aroflo_write.
@@ -177,13 +193,15 @@ export function makeWriteTool(cfg: Config, mode: 'dialog' | 'code'): Tool {
 
       if (mode === 'dialog') {
         if (!d.askUser) throw new UsageError('This client cannot show a confirm dialog; reconnect the MCP server.');
-        let ok: boolean;
+        let answer: DialogAnswer;
         try {
-          ok = await d.askUser(`Send this to AroFlo?\n\n${describeRequest(p, true)}`);
+          answer = await d.askUser(`Send this to AroFlo?\n\n${describeRequest(p, true)}`);
         } catch (err) {
+          if (d.signal?.aborted) return CANCELLED;
           return `Not sent: the confirm dialog failed (${err instanceof Error ? err.message : String(err)}).`;
         }
-        return ok ? send(p, d) : 'Not sent: the user declined.';
+        if (answer === 'send') return send(p, d);
+        return d.signal?.aborted ? CANCELLED : NOT_SENT[answer];
       }
 
       const digest = digestOf(`${p.method} ${p.path}?${canonical(p.query)}\n${canonical(p.body)}`);
