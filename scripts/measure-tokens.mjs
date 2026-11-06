@@ -21,8 +21,8 @@ async function measure(label, command, args, env) {
 }
 
 const v2 = new URL('../dist/index.js', import.meta.url).pathname;
-const read = await measure('v2 read-only', process.execPath, [v2], { AROFLO_V2_API_KEY: 'x' });
-await measure('v2 with writes', process.execPath, [v2], { AROFLO_V2_API_KEY: 'x', AROFLO_V2_WRITE_OPS: 'Notes,Clients' });
+await measure('v2 default (writes on)', process.execPath, [v2], { AROFLO_V2_API_KEY: 'x' });
+const read = await measure('v2 read-only', process.execPath, [v2], { AROFLO_V2_API_KEY: 'x', AROFLO_V2_READ_ONLY: '1' });
 const i = process.argv.indexOf('--v1');
 if (i > 0) {
   const dummy = { AROFLO_SECRET_KEY: 'x', AROFLO_UENCODED: 'x', AROFLO_PENCODED: 'x', AROFLO_ORG_ENCODED: 'x' };

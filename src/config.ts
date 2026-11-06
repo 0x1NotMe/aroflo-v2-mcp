@@ -7,7 +7,10 @@ export interface Config {
   /** Why no token is available, shown on the first tool call instead of failing at startup. */
   tokenError?: string;
   baseUrl: string;
-  /** AROFLO_V2_WRITE_OPS entries: "*", a tag such as "Notes", or an exact "PATCH /clients/{clientId}". */
+  /**
+   * Write operations the server may send, each only after the user confirms it: "*" (all, the default), a tag
+   * such as "Notes", or an exact "PATCH /clients/{clientId}". Empty means read-only.
+   */
   writeOps: string[];
   businessUnitId?: string;
   maxRpm: number;
@@ -48,14 +51,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, warn: (msg: str
     baseUrl = 'https://api.aroflo.com/v2';
   }
 
+  // Writes are on by default; each one still needs the user's OK. AROFLO_V2_READ_ONLY turns them off, and any
+  // value other than empty, 0, false, no or off counts, so a typo lands on read-only. AROFLO_V2_WRITE_OPS limits
+  // them to a list; set but empty also means no writes, which is what it meant before writes were on by default.
+  const readOnly = !['', '0', 'false', 'no', 'off'].includes((env.AROFLO_V2_READ_ONLY ?? '').trim().toLowerCase());
+  const listed = env.AROFLO_V2_WRITE_OPS;
+  if (readOnly && listed?.trim()) warn('ignoring AROFLO_V2_WRITE_OPS: AROFLO_V2_READ_ONLY is set, so writes are off');
+  const writeOps = readOnly
+    ? []
+    : listed === undefined
+      ? ['*']
+      : listed
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+
   return {
     token,
     tokenError: token ? undefined : tokenError,
     baseUrl,
-    writeOps: (env.AROFLO_V2_WRITE_OPS ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
+    writeOps,
     businessUnitId: env.AROFLO_V2_BUSINESS_UNIT_ID?.trim() || undefined,
     maxRpm: int(env.AROFLO_V2_MAX_RPM, 60, 1, 120),
     timeoutMs: int(env.AROFLO_V2_TIMEOUT_MS, 30_000, 1_000, 120_000),

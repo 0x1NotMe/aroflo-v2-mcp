@@ -73,7 +73,7 @@ export class AroFloHttp {
     if (!token) throw new ApiError(this.cfg.tokenError ?? 'no AroFlo token configured', 0);
     const write = method !== 'GET' && !(method === 'POST' && READ_ONLY_POSTS.has(path));
     if (write && (!this.cfg.writeOps.length || opts.confirmedWrite !== true)) {
-      throw new ApiError(this.cfg.writeOps.length ? 'Refusing an unconfirmed write.' : 'Writes are disabled on this server (AROFLO_V2_WRITE_OPS is empty).', 0);
+      throw new ApiError(this.cfg.writeOps.length ? 'Refusing an unconfirmed write.' : 'Writes are off on this server (AROFLO_V2_READ_ONLY is set, or AROFLO_V2_WRITE_OPS is empty).', 0);
     }
     const base = new URL(this.cfg.baseUrl);
     const url = new URL(this.cfg.baseUrl + path);
