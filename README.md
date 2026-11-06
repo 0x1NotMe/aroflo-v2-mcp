@@ -21,7 +21,7 @@ You need Node 22 or later and an AroFlo API token.
 1. Build the server:
 
    ```bash
-   git clone git@github.com:0x1NotMe/aroflo-v2-mcp.git
+   git clone https://github.com/0x1NotMe/aroflo-v2-mcp.git
    cd aroflo-v2-mcp
    npm ci
    npm run build
@@ -129,3 +129,7 @@ A `401`, or a `404` on a list that worked before, usually means the token was re
 ## Development
 
 `AGENTS.md` has the commands, the layout and the rules for working on this repo. AroFlo publishes no OpenAPI file, so `npm run spec:update` rebuilds the spec from the documentation site. A weekly GitHub Action does the same and opens a pull request when AroFlo changes the API. It needs the repository setting Settings, Actions, General, "Allow GitHub Actions to create and approve pull requests", and it reports its test result as a status on that pull request.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). The files in `spec/` are extracted from AroFlo's API documentation, which belongs to AroFlo, so the licence doesn't cover them.
