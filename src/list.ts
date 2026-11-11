@@ -2,8 +2,13 @@ import type { Op } from './catalog.js';
 import { isObj } from './format.js';
 import type { AroFloHttp } from './http.js';
 
+/** Rows one aroflo_get call returns at most, fetched PAGE_MAX at a time. */
 export const MAX_ROWS = 500;
-const PAGE_MAX = 100;
+/** AroFlo's own page-size maximum: it answers 400 to a larger `limit`. */
+export const PAGE_MAX = 100;
+
+/** Whether AroFlo pages this endpoint, so `page` and `limit` go to AroFlo. */
+export const pageable = (op: Op): boolean => op.q.some((p) => p.n === 'page') && op.q.some((p) => p.n === 'limit');
 
 export interface ListResult {
   items: unknown[];
@@ -38,10 +43,9 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
  */
 export async function fetchList(http: AroFloHttp, op: Op, path: string, query: Record<string, string>, want: number, startPage?: number, signal?: AbortSignal): Promise<ListResult> {
   want = Math.min(Math.max(1, Math.floor(want) || 1), MAX_ROWS);
-  const pageable = op.q.some((p) => p.n === 'page') && op.q.some((p) => p.n === 'limit');
   const request = (q: Record<string, string>) => http.request('GET', path, { query: q, collection: op.pp.length === 0, template: op.k, signal });
 
-  if (!pageable) {
+  if (!pageable(op)) {
     const page = readPage((await request(query)).data);
     return { items: page.items.slice(0, want), total: page.total ?? page.items.length };
   }

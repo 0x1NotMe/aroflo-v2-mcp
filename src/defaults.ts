@@ -27,6 +27,8 @@ export const QUOTE_HEADER_FIELDS = 'id,jobNumber,name,status,substatus,acceptanc
  */
 export const COMPOSITE_USES: Record<string, string[]> = {
   'GET /businessunits': ['id', 'param:_fields', 'param:limit'],
+  // archived: the filter the GET /clients hint names.
+  'GET /clients': ['param:archived'],
   // serviceId: the task-type filter named in the aroflo_get description and a hint.
   'GET /tasks': ['id', 'jobNumber', 'name', 'param:sortBy', 'param:ascending', 'param:_fields', 'param:page', 'param:limit', 'param:serviceId'],
   'GET /timesheets/entries': ['param:endDate', 'param:taskId'],
@@ -58,6 +60,11 @@ export function usedOps(): Record<string, string[]> {
  * details. One is appended to an aroflo_get result when the call uses `param`, or leaves out `absent`.
  */
 export const HINTS: Record<string, Array<{ param?: string; absent?: string; text: string }>> = {
+  // test/spec-contract.test.ts fails when AroFlo adds a created date or status to clients, so these stay true.
+  'GET /clients': [
+    { absent: 'archived', text: 'This list includes archived clients, and rows carry no status. archived=false lists active clients only, archived=true archived only.' },
+    { text: "Clients have no created date in API v2: no field in lists or records, and no date filter. Say so; don't infer one from notes, jobs or ids." }
+  ],
   'GET /tasks': [
     { param: 'requiredByTo', text: 'requiredByTo=D stops at D 00:00, so jobs due later on D are left out; to cover all of day D use requiredByTo=D+1 and drop rows due D+1.' },
     { text: 'serviceId=<id from /types/tasks> filters by task type. serviceList answered 500 in testing.' }

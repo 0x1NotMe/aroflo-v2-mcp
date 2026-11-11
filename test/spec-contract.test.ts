@@ -21,4 +21,15 @@ describe('spec contract', () => {
       expect(missing).toEqual([]);
     });
   }
+
+  // The GET /clients hints in src/defaults.ts say clients have no created date and no status. When the weekly
+  // spec PR fails here, AroFlo has added one: update those hints and consider adding it to the default columns.
+  it('clients still have no created date or status, as the GET /clients hints say', () => {
+    for (const key of ['GET /clients', 'GET /clients/{clientId}']) {
+      const op = catalog.get(key);
+      expect(op, `${key} is gone from the spec`).toBeDefined();
+      expect((op!.f ?? []).filter((f) => /creat|status|archiv/i.test(f)), `${key} fields`).toEqual([]);
+      expect(op!.q.map((p) => p.n).filter((n) => /creat|date|since/i.test(n)), `${key} filters`).toEqual([]);
+    }
+  });
 });

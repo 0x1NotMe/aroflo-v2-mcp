@@ -2,6 +2,7 @@ import type { Method, Op, Param } from '../catalog.js';
 import type { Config } from '../config.js';
 import { DEFAULT_FIELDS, HINTS } from '../defaults.js';
 import { cut, isObj, type Obj } from '../format.js';
+import { MAX_ROWS, PAGE_MAX, pageable } from '../list.js';
 import { splitPath, UsageError } from '../request.js';
 import { writeAllowed } from '../writes.js';
 import { str, type Tool } from './types.js';
@@ -64,8 +65,11 @@ function bodyLines(s: Obj, indent: string, depth: number, out: string[] = []): s
 export function describe(op: Op, cfg: Config): string {
   const lines = [`${op.k}: ${op.s}`];
   if (op.m !== 'GET' && !writeAllowed(cfg, op)) lines.push('(writes to this endpoint are not enabled on this server)');
-  const params = op.q.filter((p) => p.n !== '_fields');
+  // On a paged GET, page and limit mean what aroflo_get does with them, not AroFlo's raw page size.
+  const rows = op.m === 'GET' && pageable(op);
+  const params = op.q.filter((p) => p.n !== '_fields' && !(rows && (p.n === 'page' || p.n === 'limit')));
   if (params.length) lines.push('query:', ...paramLines(params));
+  if (rows) lines.push(`rows: ${cfg.defaultLimit} by default. limit=N gives up to ${MAX_ROWS}; the result's first line gives the total and the next page. page=N with limit up to ${PAGE_MAX} gives one page.`);
   if (op.m === 'GET' && op.f) {
     lines.push(`fields: ${op.f.filter((f) => f !== '_links').join(', ')}`);
     if (DEFAULT_FIELDS[op.k]) lines.push(`default fields: ${DEFAULT_FIELDS[op.k]} (full=true for all)`);
