@@ -13,6 +13,9 @@
    "sellEx",
    "uom"
   ],
+  "GET /clients": [
+   "param:archived"
+  ],
   "GET /invoices": [
    "balanceDue",
    "client",

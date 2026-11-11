@@ -105,9 +105,28 @@ function setup(cfg: Partial<Config> = {}) {
 describe('aroflo_get', () => {
   it('returns a header line and a table, without _links', async () => {
     const { call } = setup();
-    const r = await call('aroflo_get', { path: '/clients?name.like=smith' });
+    const r = await call('aroflo_get', { path: '/clients?name.like=smith&archived=false' });
     expect(r.isError).toBe(false);
     expect(r.text).toBe('2 rows\nid\tname\tindividual\nC1\tSmith, Jo\ttrue\nC2\tLee Pty Ltd\tfalse');
+  });
+
+  it('says a client list includes archived clients unless archived is set', async () => {
+    const { call } = setup();
+    expect((await call('aroflo_get', { path: '/clients?name.like=smith' })).text).toMatch(
+      /\nhint: This list includes archived clients, and rows carry no status\. archived=false lists active clients only, archived=true archived only\.$/
+    );
+    expect((await call('aroflo_get', { path: '/clients?archived=true' })).text).not.toContain('hint:');
+  });
+
+  it("refuses a page size above AroFlo's 100 and says how to get more rows", async () => {
+    const { call, f } = setup();
+    const paged = await call('aroflo_get', { path: '/clients?page=1&limit=500' });
+    expect(paged.isError).toBe(true);
+    expect(paged.text).toBe('limit must be a whole number from 1 to 100. With page=N, limit is rows per page and AroFlo allows at most 100. Leave out page to get up to 500 rows in one call.');
+    const big = await call('aroflo_get', { path: '/clients?limit=501' });
+    expect(big.isError).toBe(true);
+    expect(big.text).toBe('limit must be a whole number from 1 to 500. For more rows, call again with the page and limit after "next:" in the first line of the result.');
+    expect(f.calls).toHaveLength(0);
   });
 
   it('applies default columns and honours limit and page', async () => {
@@ -226,6 +245,15 @@ describe('aroflo_api', () => {
     expect(r.text).toContain('default fields: id,date,hours,user,workType,trackingCentre,note');
     expect(r.text).toContain('hint: Without endDate you get one day only');
     expect(r.text).toContain('hint: Rows carry no task. For one job add taskId=');
+  });
+
+  it('explains limit and page as rows, and says clients have no created date', async () => {
+    const { call } = setup();
+    const r = await call('aroflo_api', { q: 'GET /clients' });
+    expect(r.text).toContain("rows: 25 by default. limit=N gives up to 500; the result's first line gives the total and the next page. page=N with limit up to 100 gives one page.");
+    expect(r.text).not.toMatch(/^ {2}(page|limit) \(/m);
+    expect(r.text).toContain('hint: This list includes archived clients');
+    expect(r.text).toContain("hint: Clients have no created date in API v2: no field in lists or records, and no date filter. Say so; don't infer one from notes, jobs or ids.");
   });
 
   it('names the task-type filter, which the spec calls a service id', async () => {
