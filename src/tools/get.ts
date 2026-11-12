@@ -12,6 +12,7 @@ function count(raw: string, name: string, max: number, more = ''): number {
 
 const PAGED_LIMIT = ` With page=N, limit is rows per page and AroFlo allows at most ${PAGE_MAX}. Leave out page to get up to ${MAX_ROWS} rows in one call.`;
 const MORE_ROWS = ' For more rows, call again with the page and limit after "next:" in the first line of the result.';
+const ONE_RESPONSE = ` AroFlo returns this list in one response, so ${MAX_ROWS} rows is the most one call shows. Narrow it with a filter.`;
 
 export function listHeader(r: ListResult): string {
   const shown = r.items.length;
@@ -48,7 +49,7 @@ export const getTool: Tool = {
     let startPage: number | undefined;
     const limit = search.get('limit');
     const page = paged ? search.get('page') : null;
-    if (limit !== null) want = page !== null ? count(limit, 'limit', PAGE_MAX, PAGED_LIMIT) : count(limit, 'limit', MAX_ROWS, MORE_ROWS);
+    if (limit !== null) want = page !== null ? count(limit, 'limit', PAGE_MAX, PAGED_LIMIT) : count(limit, 'limit', MAX_ROWS, paged ? MORE_ROWS : ONE_RESPONSE);
     if (page !== null) startPage = count(page, 'page', 1_000_000);
     search.delete('limit');
     if (paged) search.delete('page');
