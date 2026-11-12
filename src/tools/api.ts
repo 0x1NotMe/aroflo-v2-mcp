@@ -69,7 +69,7 @@ export function describe(op: Op, cfg: Config): string {
   const rows = op.m === 'GET' && pageable(op);
   const params = op.q.filter((p) => p.n !== '_fields' && !(rows && (p.n === 'page' || p.n === 'limit')));
   if (params.length) lines.push('query:', ...paramLines(params));
-  if (rows) lines.push(`rows: ${cfg.defaultLimit} by default. limit=N gives up to ${MAX_ROWS}; the result's first line gives the total and the next page. page=N with limit up to ${PAGE_MAX} gives one page.`);
+  if (rows) lines.push(`rows: ${cfg.defaultLimit} by default. limit=N gives up to ${MAX_ROWS}, or page=N with limit up to ${PAGE_MAX} gives one page. The result's first line shows the total when AroFlo gives one, and next: when more rows may follow.`);
   if (op.m === 'GET' && op.f) {
     lines.push(`fields: ${op.f.filter((f) => f !== '_links').join(', ')}`);
     if (DEFAULT_FIELDS[op.k]) lines.push(`default fields: ${DEFAULT_FIELDS[op.k]} (full=true for all)`);

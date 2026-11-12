@@ -126,6 +126,10 @@ describe('aroflo_get', () => {
     const big = await call('aroflo_get', { path: '/clients?limit=501' });
     expect(big.isError).toBe(true);
     expect(big.text).toBe('limit must be a whole number from 1 to 500. For more rows, call again with the page and limit after "next:" in the first line of the result.');
+    // An endpoint AroFlo doesn't page has no next page to point at.
+    const unpaged = await call('aroflo_get', { path: '/tasks/T1/materials?limit=501' });
+    expect(unpaged.isError).toBe(true);
+    expect(unpaged.text).toBe('limit must be a whole number from 1 to 500. AroFlo returns this list in one response, so 500 rows is the most one call shows. Narrow it with a filter.');
     expect(f.calls).toHaveLength(0);
   });
 
@@ -250,7 +254,7 @@ describe('aroflo_api', () => {
   it('explains limit and page as rows, and says clients have no created date', async () => {
     const { call } = setup();
     const r = await call('aroflo_api', { q: 'GET /clients' });
-    expect(r.text).toContain("rows: 25 by default. limit=N gives up to 500; the result's first line gives the total and the next page. page=N with limit up to 100 gives one page.");
+    expect(r.text).toContain("rows: 25 by default. limit=N gives up to 500, or page=N with limit up to 100 gives one page. The result's first line shows the total when AroFlo gives one, and next: when more rows may follow.");
     expect(r.text).not.toMatch(/^ {2}(page|limit) \(/m);
     expect(r.text).toContain('hint: This list includes archived clients');
     expect(r.text).toContain("hint: Clients have no created date in API v2: no field in lists or records, and no date filter. Say so; don't infer one from notes, jobs or ids.");
