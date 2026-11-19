@@ -48384,7 +48384,16 @@
         }
        }
       },
-      "description": "Successful response"
+      "description": "Successful response",
+      "headers": {
+       "X-Total-Count": {
+        "description": "The total number of tasks matching the filter criteria.",
+        "schema": {
+         "example": 50,
+         "type": "integer"
+        }
+       }
+      }
      },
      "400": {
       "content": {
@@ -49572,14 +49581,16 @@
            "type": "object"
           },
           "status": {
-           "description": "Current status of the task.",
+           "description": "Current status of the task. Requires the `tasks:field:status:view` permission; otherwise the key is absent.",
            "enum": [
-            "PENDING",
+            "QUOTE",
+            "NOT_STARTED",
             "IN_PROGRESS",
+            "PENDING",
             "COMPLETED",
             "ARCHIVED"
            ],
-           "example": "PENDING",
+           "example": "NOT_STARTED",
            "type": "string"
           },
           "substatus": {
@@ -50885,14 +50896,16 @@
            "type": "object"
           },
           "status": {
-           "description": "Current status of the task.",
+           "description": "Current status of the task. Requires the `tasks:field:status:view` permission; otherwise the key is absent.",
            "enum": [
-            "PENDING",
+            "QUOTE",
+            "NOT_STARTED",
             "IN_PROGRESS",
+            "PENDING",
             "COMPLETED",
             "ARCHIVED"
            ],
-           "example": "PENDING",
+           "example": "NOT_STARTED",
            "type": "string"
           },
           "substatus": {
@@ -51216,21 +51229,6 @@
        }
       },
       "description": "Not Found - The resource you are looking for could not be found"
-     },
-     "409": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "properties": {
-          "error": {
-           "type": "string"
-          }
-         },
-         "type": "object"
-        }
-       }
-      },
-      "description": "Conflict - Duplicate resource error"
      },
      "422": {
       "content": {
@@ -52180,9 +52178,12 @@
                 "type": "boolean"
                },
                "costRate": {
-                "description": "The cost rate of the overhead.",
-                "example": 10,
-                "type": "number"
+                "description": "The cost rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include cost.",
+                "example": 12.45,
+                "type": [
+                 "number",
+                 "null"
+                ]
                },
                "id": {
                 "description": "The unique identifier for the overhead.",
@@ -52200,9 +52201,12 @@
                 "type": "string"
                },
                "sellRate": {
-                "description": "The sell rate of the overhead.",
-                "example": 10,
-                "type": "number"
+                "description": "The sell rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include sell.",
+                "example": 18.75,
+                "type": [
+                 "number",
+                 "null"
+                ]
                },
                "showInCalendar": {
                 "description": "Whether or not recorded timesheet entries with the overhead show in the calendar.",
@@ -52756,9 +52760,12 @@
                 "type": "boolean"
                },
                "costRate": {
-                "description": "The cost rate of the overhead.",
-                "example": 10,
-                "type": "number"
+                "description": "The cost rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include cost.",
+                "example": 12.45,
+                "type": [
+                 "number",
+                 "null"
+                ]
                },
                "id": {
                 "description": "The unique identifier for the overhead.",
@@ -52776,9 +52783,12 @@
                 "type": "string"
                },
                "sellRate": {
-                "description": "The sell rate of the overhead.",
-                "example": 10,
-                "type": "number"
+                "description": "The sell rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include sell.",
+                "example": 18.75,
+                "type": [
+                 "number",
+                 "null"
+                ]
                },
                "showInCalendar": {
                 "description": "Whether or not recorded timesheet entries with the overhead show in the calendar.",
@@ -53393,9 +53403,12 @@
              "type": "boolean"
             },
             "costRate": {
-             "description": "The cost rate of the overhead.",
-             "example": 10,
-             "type": "number"
+             "description": "The cost rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include cost.",
+             "example": 12.45,
+             "type": [
+              "number",
+              "null"
+             ]
             },
             "id": {
              "description": "The unique identifier for the overhead.",
@@ -53413,9 +53426,12 @@
              "type": "string"
             },
             "sellRate": {
-             "description": "The sell rate of the overhead.",
-             "example": 10,
-             "type": "number"
+             "description": "The sell rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include sell.",
+             "example": 18.75,
+             "type": [
+              "number",
+              "null"
+             ]
             },
             "showInCalendar": {
              "description": "Whether or not recorded timesheet entries with the overhead show in the calendar.",
@@ -60812,9 +60828,12 @@
                 "type": "boolean"
                },
                "costRate": {
-                "description": "The cost rate of the overhead.",
-                "example": 10,
-                "type": "number"
+                "description": "The cost rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include cost.",
+                "example": 12.45,
+                "type": [
+                 "number",
+                 "null"
+                ]
                },
                "id": {
                 "description": "The unique identifier for the overhead.",
@@ -60832,9 +60851,12 @@
                 "type": "string"
                },
                "sellRate": {
-                "description": "The sell rate of the overhead.",
-                "example": 10,
-                "type": "number"
+                "description": "The sell rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include sell.",
+                "example": 18.75,
+                "type": [
+                 "number",
+                 "null"
+                ]
                },
                "showInCalendar": {
                 "description": "Whether or not recorded timesheet entries with the overhead show in the calendar.",
@@ -61223,6 +61245,407 @@
      }
     },
     "summary": "List timesheet entries by subzone type",
+    "tags": [
+     "Timesheets"
+    ]
+   }
+  },
+  "/timesheets/overheads": {
+   "get": {
+    "description": "Returns a paginated list of a business unit's overheads. Without `businessUnitId`, it lists the overheads for the user's own business unit. Only active overheads are returned unless `archived` is `true`, which returns only the overheads archived for the business unit. Overheads are sorted by the business unit's display order, then by name.\n\nRequires the `timesheets:type:overhead:list` permission. The user must also have access to the business unit, otherwise 403.",
+    "operationId": "timesheetsListOverheads",
+    "parameters": [
+     {
+      "description": "The business unit to list overheads for.",
+      "example": "DBSG0000005",
+      "in": "query",
+      "name": "businessUnitId",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "description": "Only return overheads of this type.",
+      "example": "EXPENSE",
+      "in": "query",
+      "name": "type",
+      "required": false,
+      "schema": {
+       "enum": [
+        "TIME",
+        "EXPENSE"
+       ],
+       "type": "string"
+      }
+     },
+     {
+      "description": "Return the overheads archived for the business unit instead of the active ones.",
+      "example": false,
+      "in": "query",
+      "name": "archived",
+      "required": false,
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     },
+     {
+      "description": "The page number to return.",
+      "example": 1,
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "type": "integer"
+      }
+     },
+     {
+      "description": "The number of items per page.",
+      "example": 30,
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 30,
+       "maximum": 100,
+       "minimum": 1,
+       "type": "integer"
+      }
+     },
+     {
+      "description": "Comma-separated list of top-level fields to include in the response. Sub-entity fields can be filtered with bracket notation. Omitting `_fields` returns the full response. See the API overview for full syntax and behaviour.\n",
+      "example": "id,name,priority[id,description]",
+      "in": "query",
+      "name": "_fields",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "emptyList": {
+          "summary": "No overheads match the filters",
+          "value": {
+           "count": 0,
+           "items": [],
+           "page": {
+            "count": 0,
+            "number": 1,
+            "size": 30
+           }
+          }
+         },
+         "success": {
+          "summary": "A TIME and an EXPENSE overhead",
+          "value": {
+           "count": 2,
+           "items": [
+            {
+             "allowOnTask": false,
+             "archived": false,
+             "costRate": null,
+             "id": "DBSG0000071",
+             "includedInTimesheetTotal": true,
+             "name": "Annual Leave",
+             "sellRate": null,
+             "showInCalendar": true,
+             "type": "TIME",
+             "unitType": null
+            },
+            {
+             "allowOnTask": true,
+             "archived": false,
+             "costRate": 0.85,
+             "id": "DBSG0000072",
+             "includedInTimesheetTotal": true,
+             "name": "Travel Allowance",
+             "sellRate": 0.95,
+             "showInCalendar": false,
+             "type": "EXPENSE",
+             "unitType": "kms"
+            }
+           ],
+           "page": {
+            "count": 1,
+            "number": 1,
+            "size": 30
+           }
+          }
+         }
+        },
+        "schema": {
+         "description": "A paginated list of overheads.",
+         "properties": {
+          "count": {
+           "description": "The total number of overheads matching the filters.",
+           "example": 2,
+           "type": "integer"
+          },
+          "items": {
+           "items": {
+            "description": "An overhead in a business unit's overhead list.",
+            "properties": {
+             "allowOnTask": {
+              "description": "Whether or not the overhead can be recorded on a task.",
+              "example": false,
+              "type": "boolean"
+             },
+             "archived": {
+              "description": "Whether the overhead is archived for the business unit.",
+              "example": false,
+              "type": "boolean"
+             },
+             "costRate": {
+              "description": "The cost rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include cost.",
+              "example": 12.45,
+              "type": [
+               "number",
+               "null"
+              ]
+             },
+             "id": {
+              "description": "The unique identifier for the overhead.",
+              "example": "7KB8000006G",
+              "type": "string"
+             },
+             "includedInTimesheetTotal": {
+              "description": "Whether or not to include the overhead in the total hours and/or total expense value for weekly timesheets.",
+              "example": false,
+              "type": "boolean"
+             },
+             "name": {
+              "description": "The name of the overhead.",
+              "example": "Annual Leave",
+              "type": "string"
+             },
+             "sellRate": {
+              "description": "The sell rate of the overhead. Null for TIME overheads. Omitted when the authenticated user's material and expense visibility does not include sell.",
+              "example": 18.75,
+              "type": [
+               "number",
+               "null"
+              ]
+             },
+             "showInCalendar": {
+              "description": "Whether or not recorded timesheet entries with the overhead show in the calendar.",
+              "example": false,
+              "type": "boolean"
+             },
+             "type": {
+              "description": "The type of the overhead.",
+              "enum": [
+               "TIME",
+               "EXPENSE"
+              ],
+              "example": "EXPENSE",
+              "type": "string"
+             },
+             "unitType": {
+              "description": "The unit type of the overhead.",
+              "example": "HOUR",
+              "type": [
+               "string",
+               "null"
+              ]
+             }
+            },
+            "title": "OverheadListSchema",
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "page": {
+           "properties": {
+            "count": {
+             "description": "The total number of pages.",
+             "example": 1,
+             "type": "integer"
+            },
+            "number": {
+             "description": "The current page number.",
+             "example": 1,
+             "type": "integer"
+            },
+            "size": {
+             "description": "The number of items per page.",
+             "example": 30,
+             "type": "integer"
+            }
+           },
+           "title": "PageSchema",
+           "type": "object"
+          }
+         },
+         "title": "OverheadPaginatedListSchema",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful response",
+      "headers": {
+       "X-Total-Count": {
+        "description": "The total number of matching overheads across all pages.",
+        "schema": {
+         "example": 2,
+         "type": "integer"
+        }
+       }
+      }
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "invalidArchived": {
+          "summary": "archived is not a boolean",
+          "value": {
+           "error": "The 'archived' field must be of type: boolean"
+          }
+         },
+         "invalidLimit": {
+          "summary": "Limit above the maximum",
+          "value": {
+           "error": "Invalid value for the 'limit' field. Maximum value is 100."
+          }
+         },
+         "invalidType": {
+          "summary": "type is not TIME or EXPENSE",
+          "value": {
+           "error": "'HOURS' is not a valid value for the type parameter."
+          }
+         }
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Bad Request - Invalid query parameter"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "example": {
+         "errorcode": "401 Unauthorized"
+        },
+        "schema": {
+         "properties": {
+          "errorcode": {
+           "description": "The error code indicating the type of authentication failure.",
+           "example": "401 Unauthorized",
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "Unauthorized - Authentication is required or has failed"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "example": {
+         "error": "You do not have permission to perform this action"
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Forbidden - You do not have permission to perform this action"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "businessUnitNotFound": {
+          "summary": "No business unit with that ID",
+          "value": {
+           "error": "Business Unit not found"
+          }
+         },
+         "invalidBusinessUnitId": {
+          "summary": "businessUnitId is not a valid ID",
+          "value": {
+           "error": "The resource you are looking for could not be found."
+          }
+         }
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Not Found - The business unit does not exist"
+     },
+     "500": {
+      "content": {
+       "application/json": {
+        "example": {
+         "error": "Oops! That wasn't meant to happen. If it happens again, please let us know. We apologize for the inconvenience."
+        },
+        "schema": {
+         "properties": {
+          "error": {
+           "description": "Error message describing what went wrong",
+           "example": "Bad Request",
+           "type": "string"
+          }
+         },
+         "required": [
+          "error"
+         ],
+         "title": "Error",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Internal Server Error - An unexpected error occurred on the server"
+     }
+    },
+    "summary": "List overheads",
     "tags": [
      "Timesheets"
     ]

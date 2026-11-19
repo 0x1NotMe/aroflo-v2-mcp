@@ -1,5 +1,11 @@
 [
  {
+  "date": "2026-11-08",
+  "title": "API Release Notes - November 8, 2026",
+  "summary": "This release includes 3 breaking changes, 2 new endpoints, 3 updated endpoints, 8 schema changes.",
+  "url": "https://docs.api.aroflo.com/blog/api-changes-2026-11-08"
+ },
+ {
   "date": "2026-11-01",
   "title": "API Release Notes - November 1, 2026",
   "summary": "This release includes 9 breaking changes, 6 new endpoints, 7 updated endpoints, 12 schema changes.",
